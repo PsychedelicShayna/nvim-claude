@@ -227,6 +227,8 @@ class Bridge:
             "model": None,
             "effort": None,
             "context_limit_tokens": None,
+            "cumulative_usage": {},
+            "total_cost_usd": 0.0,
         }
 
     @staticmethod
@@ -458,6 +460,14 @@ class Bridge:
             self.current["model"] = params["config"].get("model")
             self.current["effort"] = params["config"].get("effort")
             self.current["context_limit_tokens"] = params["config"].get("context_limit_tokens")
+            turn_usage = self._as_dict(result.usage) or {}
+            cumulative = dict(self.current.get("cumulative_usage") or {})
+            if isinstance(turn_usage, dict):
+                for key, value in turn_usage.items():
+                    if isinstance(value, (int, float)) and not isinstance(value, bool):
+                        cumulative[key] = cumulative.get(key, 0) + value
+            self.current["cumulative_usage"] = cumulative
+            self.current["total_cost_usd"] = self.current.get("total_cost_usd", 0.0) + (result.total_cost_usd or 0.0)
             if not self.current["first_prompt"]:
                 self.current["first_prompt"] = params.get("instruction", "")
             if self.current.get("saved") or self.store.sticky():
@@ -473,7 +483,7 @@ class Bridge:
                 "resolved_model": self._resolved_model(result),
                 "usage_before": usage_before,
                 "usage_after": usage_after,
-                "cumulative_usage": self._as_dict(result.usage),
+                "cumulative_usage": cumulative,
                 "cost_usd": result.total_cost_usd,
             }
         except RpcFailure:
@@ -593,6 +603,7 @@ class Bridge:
                 usage = await self._context_usage(self.client)
             except Exception:
                 usage = None
+        authentication = "api-key environment" if os.environ.get("ANTHROPIC_API_KEY") else "runtime-managed or unknown"
         return {
             "sdk_version": self.sdk_version,
             "cli_version": await self._read_cli_version(),
@@ -601,6 +612,7 @@ class Bridge:
             "conversation": {key: value for key, value in self.current.items() if key != "client"},
             "sticky": self.store.sticky(),
             "context_usage": usage,
+            "authentication": authentication,
             "models_announced": bool(self.server_info),
             "cache": {"ttl_seconds": params.get("cache_ttl_seconds", 3600), "provenance": "configured estimate"},
             "no_tools": {

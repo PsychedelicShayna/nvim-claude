@@ -342,13 +342,21 @@ function M.info()
     if err then util.notify(util.display_error(err), vim.log.levels.ERROR); return end
     local conversation = result.conversation or {}
     local usage = result.context_usage or {}
+    local cumulative = conversation.cumulative_usage or {}
+    local cumulative_text = ("input %s, output %s, cache read %s, cache write %s"):format(
+      tostring(cumulative.input_tokens or 0),
+      tostring(cumulative.output_tokens or 0),
+      tostring(cumulative.cache_read_input_tokens or 0),
+      tostring(cumulative.cache_creation_input_tokens or 0)
+    )
     local lines = {
       "Model: " .. tostring(conversation.model or state.config.model),
       "Effort: " .. tostring(conversation.effort or state.config.effort or "runtime default"),
       "Local budget: " .. tostring(state.config.context_limit_tokens or "model default"),
       "Context occupancy: " .. tostring(usage.totalTokens or "unavailable"),
-      "Cumulative usage: reported after each completed request",
+      "Cumulative usage: " .. cumulative_text .. "; cost $" .. ("%.4f"):format(conversation.total_cost_usd or 0),
       "Retention: " .. (conversation.saved and "saved" or "ephemeral") .. (result.sticky and " (sticky)" or ""),
+      "Authentication: " .. tostring(result.authentication),
       "SDK: " .. tostring(result.sdk_version),
       "Bundled CLI: " .. tostring(result.cli_version or "unavailable"),
       "Python: " .. tostring(result.python_version),
