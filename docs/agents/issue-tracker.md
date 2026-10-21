@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Track issues and engineering tickets in PsychedelicShayna/nvim-claude. Use gh from this clone, or pass --repo PsychedelicShayna/nvim-claude explicitly. README.md and SPEC.md remain the project overview and design draft, not an automatically published issue backlog.
+Track issues and engineering tickets in PsychedelicShayna/nvim-claude. Use gh from this clone, or pass --repo PsychedelicShayna/nvim-claude explicitly. README.md and SPEC.md remain the project overview and shared implementation baseline, not an automatically published issue backlog.
 
 ## Operations
 
