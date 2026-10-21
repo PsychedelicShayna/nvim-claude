@@ -322,7 +322,10 @@ function M.update(callback)
   end
   local function rebuild()
     local p = paths()
-    pcall(vim.fn.delete, p.runtime, "rf")
+    if vim.uv.fs_stat(p.runtime) and vim.fn.delete(p.runtime, "rf") ~= 0 then
+      callback(false, "could not remove the existing plugin runtime")
+      return
+    end
     state.stderr_buffer = ""
     start(callback)
   end
