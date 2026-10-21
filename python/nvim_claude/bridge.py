@@ -244,6 +244,9 @@ class Bridge:
         return ClaudeAgentOptions(
             **args, tools=[], allowed_tools=[], mcp_servers={},
             strict_mcp_config=True, setting_sources=[], skills=[], plugins=[], agents=None,
+            # Safe mode suppresses global-config plugins and bundled skills
+            # while retaining the user's normal Claude Code authentication.
+            extra_args={"safe-mode": None},
             permission_mode="dontAsk", max_turns=1, include_partial_messages=True,
             system_prompt={"type": "custom", "prompt": prompt, "snapshot": False},
             model=record["model"], effort=record.get("effort"),
@@ -305,11 +308,15 @@ class Bridge:
         tools = data.get("tools")
         if not isinstance(tools, list) or not isinstance(data.get("mcp_servers"), list):
             raise RPCError("Runtime did not report its effective tools and MCP servers; cannot verify no-tools mode")
-        extras = {k: data.get(k) for k in ("skills", "plugins", "agents") if data.get(k)}
+        announced = {key: len(data[key]) for key in ("skills", "plugins", "agents")
+                     if isinstance(data.get(key), list) and data[key]}
         mcp = data["mcp_servers"]
-        if tools or extras or mcp:
-            raise RPCError(f"Runtime exposes unexpected model tools/context: {list(tools)}, {list(extras)}, {len(mcp)} MCP servers")
-        self.capabilities["no_tools"] = "verified from runtime init"
+        if tools or mcp:
+            raise RPCError(f"Runtime exposes model tools or MCP servers: {list(tools)}, {len(mcp)} MCP servers")
+        # Init advertises an extension catalogue on some installations even
+        # under safe mode. It is not evidence of model-accessible tools.
+        self.capabilities["extension_catalogue_announced"] = announced
+        self.capabilities["no_tools"] = "effective runtime tools and MCP servers verified empty; safe mode requested"
         source = data.get("apiKeySource")
         if source and source != "none":
             self.auth_method = "api_key"

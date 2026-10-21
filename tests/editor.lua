@@ -26,6 +26,28 @@ assert(not applied, 'a changed insertion boundary must reject late output')
 assert(vim.api.nvim_buf_get_lines(buf, 0, -1, false)[1] == 'abnew中cd')
 target.release(stale)
 
+vim.api.nvim_buf_set_lines(buf, 0, -1, false, { 'a\tb', 'a\tb' })
+vim.bo[buf].tabstop = 4
+vim.bo[buf].undolevels = -1
+vim.bo[buf].undolevels = 1000
+vim.fn.setpos("'<", { 0, 1, 2, 0 })
+vim.fn.setpos("'>", { 0, 2, 2, 0 })
+local block = assert(target.visual(buf, '\22'))
+assert(#block.segments == 2)
+local edits = {}
+for _, item in ipairs(block.segments) do
+  edits[#edits + 1] = { id = item.id, text = 'X' }
+end
+assert(target.apply(block, edits))
+local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+assert(lines[1] == 'a  Xb' and lines[2] == 'a  Xb',
+  'block replacement must preserve unselected tab cells on every row')
+vim.cmd('undo')
+lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+assert(lines[1] == 'a\tb' and lines[2] == 'a\tb',
+  'one undo must reverse the complete blockwise replacement')
+target.release(block)
+
 local parsed = assert(model.parse('claude-opus-4-6[1m][500k]:high', {
   model = 'claude-haiku-5-5', effort = 'low', context_limit_tokens = 100000,
 }, {}))
