@@ -11,12 +11,44 @@ end
 
 local function next_col(line, byte_col)
   if byte_col >= #line then return #line end
-  local width = vim.str_byteindex(line:sub(byte_col + 1), 1)
-  return byte_col + math.max(width, 1)
+  local first = line:byte(byte_col + 1)
+  if not first then return #line end
+  local width = first < 0x80 and 1 or first < 0xE0 and 2 or first < 0xF0 and 3 or 4
+  return math.min(byte_col + width, #line)
 end
 
 local function text(buf, sr, sc, er, ec)
   return table.concat(vim.api.nvim_buf_get_text(buf, sr, sc, er, ec, {}), "\n")
+end
+
+local function display_width(character, column)
+  if character == "\t" then return vim.bo.tabstop - (column % vim.bo.tabstop) end
+  return math.max(vim.fn.strdisplaywidth(character), 1)
+end
+
+local function materialize_boundaries(line, start_cell, end_cell)
+  local output, cells, bytes = {}, 0, 0
+  local start_byte, end_byte
+  local count = vim.fn.strchars(line)
+  for index = 0, count - 1 do
+    local character = vim.fn.strcharpart(line, index, 1)
+    local width = display_width(character, cells)
+    local partial = (start_cell > cells and start_cell < cells + width) or (end_cell > cells and end_cell < cells + width)
+    local rendered = partial and string.rep(" ", width) or character
+    if start_cell == cells then start_byte = bytes end
+    if end_cell == cells then end_byte = bytes end
+    output[#output + 1] = rendered
+    cells, bytes = cells + width, bytes + #rendered
+  end
+  if cells < end_cell then
+    local padding = string.rep(" ", end_cell - cells)
+    output[#output + 1] = padding
+    bytes = bytes + #padding
+    cells = end_cell
+  end
+  start_byte = start_byte or math.min(start_cell, bytes)
+  end_byte = end_byte or bytes
+  return table.concat(output), start_byte, end_byte
 end
 
 local function mark_segment(buf, segment)
@@ -30,21 +62,31 @@ local function mark_segment(buf, segment)
 end
 
 local function visual_segments(buf)
-  local first, last = ordered(vim.fn.getpos("'<"), vim.fn.getpos("'>"))
-  local kind = vim.fn.visualmode()
+  local mode = vim.fn.mode(1)
+  local active = mode == "v" or mode == "V" or mode:byte() == 22
+  local first, last = active and vim.fn.getpos("v") or vim.fn.getpos("'<"), active and vim.fn.getpos(".") or vim.fn.getpos("'>")
+  first, last = ordered(first, last)
+  local kind = active and mode:sub(1, 1) or vim.fn.visualmode()
   local segments = {}
   if kind == "V" then
     segments[1] = { start_row = first[2] - 1, start_col = 0, end_row = last[2], end_col = 0 }
   elseif kind == "\022" then
-    local ok, positions = pcall(vim.fn.getregionpos, first, last, { type = kind, exclusive = false })
-    assert(ok and #positions > 0, "unable to capture block selection")
+    local ok, positions = pcall(vim.fn.getregionpos, first, last, { type = kind, exclusive = false, eol = true })
+    local text_ok, selected = pcall(vim.fn.getregion, first, last, { type = kind, exclusive = false })
+    assert(ok and text_ok and #positions > 0, "unable to capture block selection")
     for index, pair in ipairs(positions) do
       local a, b = pair[1], pair[2]
       local row = a[2] - 1
       local line = vim.api.nvim_buf_get_lines(buf, row, row + 1, false)[1] or ""
       local start_col = math.max(a[3] - 1, 0)
       local end_col = next_col(line, math.max(b[3] - 1, start_col))
-      segments[index] = { start_row = row, start_col = start_col, end_row = row, end_col = end_col, block = true }
+      local start_cell = math.max(vim.fn.virtcol({ a[2], math.max(a[3], 1) }) - 1 + a[4], 0)
+      local end_cell = b[4] > 0 and (vim.fn.virtcol({ b[2], math.max(b[3], 1) }) - 1 + b[4]) or (vim.fn.virtcol({ b[2], math.max(b[3], 1) }) - 1 + vim.fn.strdisplaywidth(line:sub(math.max(b[3], 1), end_col)))
+      segments[index] = {
+        start_row = row, start_col = start_col, end_row = row, end_col = end_col,
+        block = true, partial_cell = a[4] > 0 or b[4] > 0, start_cell = start_cell,
+        end_cell = end_cell, original_line = line, original = selected[index],
+      }
     end
   else
     local start_row, start_col = first[2] - 1, first[3] - 1
@@ -89,7 +131,10 @@ function M.valid(target)
     local pos = vim.api.nvim_buf_get_extmark_by_id(target.buf, ns, segment.start_mark, { details = true })
     if #pos == 0 then return false end
     local details = pos[3]
-    if text(target.buf, pos[1], pos[2], details.end_row, details.end_col) ~= segment.original then return false end
+    if segment.original_line then
+      local line = vim.api.nvim_buf_get_lines(target.buf, pos[1], pos[1] + 1, false)[1]
+      if line ~= segment.original_line then return false end
+    elseif text(target.buf, pos[1], pos[2], details.end_row, details.end_col) ~= segment.original then return false end
   end
   return true
 end
@@ -124,9 +169,17 @@ function M.apply(target, replacements)
     local replacement = by_id[segment.id]
     if segment.block and replacement:find("\n", 1, true) then return false, "A blockwise replacement contained a newline." end
     if #applied > 0 then pcall(vim.cmd, "undojoin") end
-    local lines = vim.split(replacement, "\n", { plain = true })
-    vim.api.nvim_buf_set_text(target.buf, pos[1], pos[2], details.end_row, details.end_col, lines)
-    applied[#applied + 1] = { replacement = replacement, row = pos[1], col = pos[2] }
+    local row, col = pos[1], pos[2]
+    if segment.partial_cell then
+      local rendered, start_byte, end_byte = materialize_boundaries(segment.original_line, segment.start_cell, segment.end_cell)
+      local changed = rendered:sub(1, start_byte) .. replacement .. rendered:sub(end_byte + 1)
+      vim.api.nvim_buf_set_lines(target.buf, row, row + 1, false, { changed })
+      col = start_byte
+    else
+      local lines = vim.split(replacement, "\n", { plain = true })
+      vim.api.nvim_buf_set_text(target.buf, row, col, details.end_row, details.end_col, lines)
+    end
+    applied[#applied + 1] = { replacement = replacement, row = row, col = col }
   end
   local fresh = { buf = target.buf, visual_kind = target.visual_kind, segments = {} }
   for index, item in ipairs(vim.fn.reverse(applied)) do

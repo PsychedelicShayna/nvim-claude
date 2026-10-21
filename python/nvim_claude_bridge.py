@@ -231,26 +231,28 @@ class Bridge:
 
     @staticmethod
     def _occupancy(usage: dict[str, Any]) -> int:
-        for key in ("context_window_used", "input_tokens", "total_input_tokens", "tokens"):
+        for key in ("totalTokens", "context_window_used", "input_tokens", "total_input_tokens", "tokens"):
             value = usage.get(key)
             if isinstance(value, int):
                 return value
         return 0
 
-    async def _budget(self, encoded: str) -> tuple[bool, str | None]:
+    async def _budget(self, encoded: str) -> tuple[bool, str | None, bool]:
         usage = await self._usage()
         occupied = self._occupancy(usage)
         # One UTF-8 byte per token is a conservative upper bound for supplied text.
         # The fixed reserve covers the static prompt, runtime additions, and output.
         required = occupied + len(encoded.encode("utf-8")) + 20_000
         if required <= self.limit:
-            return True, None
+            return True, None, False
+        compacted = False
         if occupied and self.active.get("session_id"):
             await self._compact()
+            compacted = True
             required = len(encoded.encode("utf-8")) + 20_000
         if required > self.limit:
-            return False, f"The request cannot fit the {self.limit:,}-token local ceiling. Conservative bound: {required:,} tokens."
-        return True, None
+            return False, f"The request cannot fit the {self.limit:,}-token local ceiling. Conservative bound: {required:,} tokens.", compacted
+        return True, None, compacted
 
     @staticmethod
     def _stream_text(message: StreamEvent) -> str:
@@ -273,8 +275,14 @@ class Bridge:
                 await self._disconnect()
                 self.active = self._new_conversation()
                 self.epoch += 1
-            encoded = json.dumps(params["payload"], ensure_ascii=False, separators=(",", ":"))
-            allowed, reason = await self._budget(encoded)
+            payload = dict(params["payload"])
+            fallback = payload.pop("_snapshot_after_compaction", None)
+            encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+            allowed, reason, compacted = await self._budget(encoded)
+            if compacted and fallback is not None:
+                payload["context"] = fallback
+                encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+                allowed, reason, _ = await self._budget(encoded)
             if not allowed:
                 await self.protocol.notify("request/error", {"request_id": request_key, "epoch": self.epoch, "message": reason})
                 return
@@ -304,9 +312,9 @@ class Bridge:
             self.active["session_id"] = result.session_id
             self.active["last_request"] = time.time()
             self.active["usage"] = result.usage or {}
-            self.active["transcript"].append({"request": params["payload"], "response": raw, "time": time.time()})
+            self.active["transcript"].append({"request": payload, "response": raw, "time": time.time()})
             if not self.active["first_prompt"]:
-                self.active["first_prompt"] = params["payload"].get("instruction", "")
+                self.active["first_prompt"] = payload.get("instruction", "")
             if self.active.get("saved"):
                 self.saved[self.active["id"]] = self.active
             self._save_manifest()
@@ -334,6 +342,7 @@ class Bridge:
                 raise RuntimeError("runtime compaction failed")
         self.active["baselines"] = {}
         self.context_usage = {}
+        await self.protocol.notify("context/reset", {"epoch": self.epoch, "reason": "compaction"})
 
     async def command(self, params: dict[str, Any]) -> Any:
         action = params["action"]
@@ -416,7 +425,11 @@ class Bridge:
             "cache": {"ttl_seconds": self.ttl, "provenance": "estimated from configured billing mode"},
             "versions": self.runtime_versions,
             "models": self.models(),
-            "no_tools": {"requested": True, "server_info": self.server_info},
+            "no_tools": {
+                "requested": True,
+                "effective_mcp_tools": len(usage.get("mcpTools", [])),
+                "effective_agents": len(usage.get("agents", [])),
+            },
         }
 
     def list_saved(self) -> list[dict[str, Any]]:
@@ -429,10 +442,8 @@ class Bridge:
         await self._disconnect()
         if not self.active.get("saved"):
             self._delete_session(self.active.get("session_id"))
-        try:
-            self.manifest_path.unlink()
-        except OSError:
-            pass
+        self.active = self._new_conversation()
+        self._save_manifest()
         return {"ok": True}
 
 
@@ -477,6 +488,8 @@ async def main() -> None:
                 await protocol.error(request_id, -32601, f"unknown method: {method}")
         except Exception as exc:
             await protocol.error(request_id, -32000, str(exc))
+    if bridge.manifest_path != Path():
+        await bridge.shutdown()
 
 
 if __name__ == "__main__":

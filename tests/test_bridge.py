@@ -43,9 +43,13 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_budget_refuses_mandatory_input_over_limit(self):
         self.bridge.limit = 25_000
-        allowed, reason = await self.bridge._budget("x" * 6_000)
+        allowed, reason, compacted = await self.bridge._budget("x" * 6_000)
         self.assertFalse(allowed)
+        self.assertFalse(compacted)
         self.assertIn("25,000-token", reason)
+
+    def test_runtime_context_total_is_counted(self):
+        self.assertEqual(self.bridge._occupancy({"totalTokens": 1391}), 1391)
 
     def test_model_metadata_is_not_invented(self):
         self.bridge.server_info = {}

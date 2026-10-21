@@ -52,6 +52,7 @@ local function submit(operation, request_target, instruction)
     local supplied
     supplied, candidate = context.build(request_target, config.current.context_limit_tokens)
     payload.document, payload.context = supplied.document, supplied.context
+    payload._snapshot_after_compaction = supplied.fallback
     payload.targets = target.payload(request_target)
   end
   active = { id = request_id, operation = operation, target = request_target, origin = request_target and request_target.win or vim.api.nvim_get_current_win(), candidate = candidate, streamed = "" }
@@ -121,7 +122,7 @@ local function model_picker()
     ui.select("Model", models, function(item) return type(item) == "table" and (item.displayName or item.name or item.id) or tostring(item) end, function(choice)
       if not choice then return end
       local slug = type(choice) == "table" and (choice.id or choice.value or choice.name) or choice
-      local efforts = type(choice) == "table" and (choice.efforts or choice.supportedEfforts) or nil
+      local efforts = type(choice) == "table" and (choice.efforts or choice.supportedEfforts or choice.supportedEffortLevels) or nil
       local function choose_limit(effort)
         local choices = vim.list_extend({ "model default" }, vim.deepcopy(limits))
         ui.select("Context limit", choices, tostring, function(limit)
@@ -250,6 +251,7 @@ function M.setup(opts)
     bridge.on("request/error", function(params)
       if active and active.id == params.request_id then ui.finish(active.id, params.message, "Claude error", active.origin); target.clear_highlight(active.target); active = nil end
     end)
+    bridge.on("context/reset", function() context.reset() end)
     bridge.on("request/complete", function(params)
       if not active or active.id ~= params.request_id then return end
       local current = active
