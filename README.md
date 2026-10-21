@@ -35,9 +35,9 @@ The SDK is an official integration mechanism, but that is not a blanket guarante
 
 Anthropic's SDK overview currently says: "Unless previously approved, Anthropic does not allow third party developers to offer claude.ai login or rate limits for their products, including agents built on the Claude Agent SDK." It directs integrations to API-key authentication. That is relevant to distributing this plugin; it does not by itself settle every case of personal local use.[3]
 
-The desired personal workflow is to reuse existing Claude Code authentication where supported, including when running the SDK's bundled executable. We still need to verify that path with the chosen runtime and account. If a login command is needed, it should delegate to the bundled runtime's official authentication flow. The plugin should not implement its own OAuth client or copy and maintain refresh tokens.
+This candidate reuses runtime authentication rather than copying credentials. In the isolated installation test, the bundled runtime recognized an existing Claude Max login and completed a Haiku request without copying tokens into the test profile. Other accounts and environments may differ. If a login is needed, `:NvClaude login` delegates to the bundled runtime's official authentication flow; the plugin has no OAuth client of its own.
 
-API-key authentication is a documented SDK path and bills as API usage. The plugin must make the active authentication/billing mode visible when known, report uncertainty when it is not known, and never silently switch from subscription credentials to a paid API key.
+API-key authentication is a documented SDK path and bills as API usage. This candidate refuses an `ANTHROPIC_API_KEY` in the Neovim process rather than silently switching to paid API-key billing. `:NvClaude info` shows the provider and subscription class reported by the runtime when available and marks billing as unverified when it cannot be independently checked.
 
 ## Install this candidate
 
