@@ -48,6 +48,9 @@ class RequestPolicy(unittest.TestCase):
             enforce_budget('', [], 'x' * 100000, 100000, 1000000)
         with self.assertRaises(ValueError):
             enforce_budget('', [], 'x' * 90000, None, 100000)
+        self.assertEqual(enforce_budget('system', 70000, 'x' * 1000, 90000, 1000000), 87390)
+        with self.assertRaises(ValueError):
+            enforce_budget('system', 80000, 'x' * 4000, 100000, 1000000)
 
     def test_confirmed_baselines_and_explicit_excerpts(self):
         request = {'operation': 'replace', 'instruction': 'edit', 'document': {'id': 'b'},

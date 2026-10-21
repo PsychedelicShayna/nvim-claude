@@ -113,7 +113,7 @@ def make_context(request, baselines):
         else:
             delta = "".join(difflib.unified_diff(old_text.splitlines(True), text.splitlines(True),
                                                fromfile=old_revision, tofile=revision))
-            if delta and byte_bound(delta) < byte_bound(text):
+            if delta and old_text.endswith("\n") and text.endswith("\n") and byte_bound(delta) < byte_bound(text):
                 context = {"kind": "diff", "base_revision": old_revision,
                            "revision": revision, "format": "unified", "text": delta}
     payload["context"] = context
@@ -147,7 +147,8 @@ def prompt_bound(system, history, prompt):
     # Text-only model input has no media/tool schemas. A byte-fallback tokenizer
     # cannot emit more ordinary text tokens than UTF-8 bytes. Per-message framing,
     # runtime instructions and metadata are covered separately by OVERHEAD.
-    return byte_bound(system) + sum(byte_bound(x) + 128 for x in history) + byte_bound(prompt) + OVERHEAD
+    retained = history if isinstance(history, int) else sum(byte_bound(x) + 128 for x in history)
+    return byte_bound(system) + retained + byte_bound(prompt) + OVERHEAD
 
 
 def enforce_budget(system, history, prompt, limit, physical):

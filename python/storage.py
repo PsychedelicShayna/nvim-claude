@@ -96,6 +96,11 @@ class Store:
     def delete(self, record):
         if record["saved"]:
             return
+        if not record["paths"] and record.get("session_id"):
+            from claude_agent_sdk._internal.sessions import _resolve_session_file_path
+            path = _resolve_session_file_path(record["session_id"], str(self.workspace))
+            if path:
+                self.remember_path(record, path, record["session_id"])
         for entry in record["paths"]:
             path = Path(entry)
             # Only exact paths registered from this plugin's runtime are removed.

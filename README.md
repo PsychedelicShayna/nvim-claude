@@ -133,7 +133,13 @@ The requested context presets are:
 950k, 980k
 ```
 
-There should also be a "model default" choice. A local budget cannot enlarge a model's actual context window. Automatic compaction is not, by itself, proof that no request can exceed a chosen pricing boundary. The implementation must account for the next prompt, system instructions, context, and compaction requests before promising a hard 100k ceiling.
+The picker also offers model default. A local budget cannot enlarge the model's physical window.
+
+The pre-dispatch guard counts the completed prefix from provider-reported input, cached input, and output tokens when available. New text and system instructions use a conservative UTF-8 byte bound, with a separate 16,384-token runtime/framing allowance. Uncertain delivery or model changes invalidate the measured prefix; the bridge then counts owned transcript text conservatively. Runtime context occupancy remains a separately labeled estimate.
+
+The runtime is limited to 8,192 output tokens, which must also fit its physical context. Compaction is requested before the next edit would exceed the budget, and the compaction call is budgeted too. A fresh snapshot or explicitly incomplete excerpt follows compaction. Targets and instructions are never silently truncated. A whole-document task that cannot fit is refused.
+
+This is a conservative host guard, not a provider-side input-token setting. It can refuse text that an exact tokenizer would fit. The runtime allowance is explicit rather than a proof about arbitrary future runtime changes. Effective tools, MCP, skills, plugins, agents, and memory metadata are checked, and reported input usage is audited against the dispatch bound.
 
 ## Conversations and caching
 

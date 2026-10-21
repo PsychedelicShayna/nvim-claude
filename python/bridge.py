@@ -16,7 +16,7 @@ from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, ClaudeSDKCli
 from claude_agent_sdk.types import StreamEvent
 from claude_agent_sdk._internal.sessions import _resolve_session_file_path
 
-from policy import (COMPACT_RESERVE, OUTPUT_RESERVE, OVERHEAD, PRESETS, byte_bound,
+from policy import (COMPACT_RESERVE, OUTPUT_RESERVE, OVERHEAD, PRESETS,
                     edit_result, encode, enforce_budget, excerpt, make_context,
                     normalize, parse_model, prompt_bound)
 from storage import Store
@@ -32,28 +32,22 @@ def send(value):
     sys.stdout.buffer.flush()
 
 
-def read_frame():
+async def read_frame(reader):
     headers = {}
     while True:
-        line = sys.stdin.buffer.readline(8192)
+        line = await reader.readline()
         if not line:
             return None
         if line in (b"\r\n", b"\n"):
             break
         key, separator, value = line.decode("ascii").partition(":")
-        if not separator:
+        if not separator or len(line) > 8192:
             raise ValueError("Malformed RPC header")
         headers[key.lower()] = value.strip()
     size = int(headers.get("content-length", "0"))
     if not 0 < size <= MAX_FRAME:
         raise ValueError("Invalid Content-Length")
-    body = bytearray()
-    while len(body) < size:
-        part = sys.stdin.buffer.read(size - len(body))
-        if not part:
-            raise EOFError("Truncated RPC frame")
-        body.extend(part)
-    return json.loads(body)
+    return json.loads(await reader.readexactly(size))
 
 
 class Bridge:
@@ -108,9 +102,11 @@ class Bridge:
             "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
             "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": "1", "CLAUDE_CODE_DISABLE_ADVISOR_TOOL": "1",
             "CLAUDE_CODE_PLUGIN_DIRS": "", "DISABLE_AUTO_COMPACT": "1",
+            "CLAUDE_CODE_EXTRA_BODY": "", "CLAUDE_CODE_SKIP_PROMPT_HISTORY": "0",
+            "CLAUDE_CODE_FORCE_SESSION_PERSISTENCE": "1",
             "CLAUDE_CODE_MAX_OUTPUT_TOKENS": str(OUTPUT_RESERVE), "MAX_THINKING_TOKENS": "0",
             "CLAUDE_CODE_EFFORT_LEVEL": self.config.get("effort") or "",
-            "ANTHROPIC_MODEL": self.config["model"], "ANTHROPIC_DEFAULT_MODEL": self.config["model"],
+            "ANTHROPIC_MODEL": self.config["model"],
             "ANTHROPIC_SMALL_FAST_MODEL": self.config["model"],
         }
         if self.config.get("billing", "subscription") == "subscription":
@@ -274,13 +270,23 @@ class Bridge:
         prior = costs.get(result.session_id, 0)
         self.record["cost_usd"] += max(0, (result.total_cost_usd or 0) - prior)
         costs[result.session_id] = result.total_cost_usd or prior
-        for key, value in (result.usage or {}).items():
-            if isinstance(value, (int, float)):
-                self.record["usage"][key] = self.record["usage"].get(key, 0) + value
+        if result.model_usage:
+            ledgers = self.record.setdefault("runtime_usage", {})
+            previous = ledgers.get(result.session_id, {})
+            for model, counts in result.model_usage.items():
+                total = self.record["usage"].setdefault(model, {})
+                for key in ("inputTokens", "outputTokens", "cacheReadInputTokens", "cacheCreationInputTokens", "webSearchRequests"):
+                    value = counts.get(key, 0)
+                    total[key] = total.get(key, 0) + max(0, value - previous.get(model, {}).get(key, 0))
+            ledgers[result.session_id] = result.model_usage
+        if not compact:
+            usage = result.usage or {}
+            measured = sum(usage.get(k, 0) for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
+            self.record["context_token_bound"] = measured + usage.get("output_tokens", 0) if measured else None
         self.store.write(self.record)
         return raw, boundary
 
-    def compacted_history(self):
+    def compacted_history(self, require_boundary=True):
         self.track()
         # Runtime compaction writes a boundary followed by a summary user message.
         # Count every retained serialized message, including reasoning, rather
@@ -291,22 +297,30 @@ class Bridge:
                 entry = json.loads(line)
                 if entry.get("type") == "system" and entry.get("subtype") == "compact_boundary":
                     history, seen = [], True
-                if seen and entry.get("type") in ("user", "assistant"):
+                if entry.get("type") in ("user", "assistant"):
                     history.append(encode(entry.get("message", {})))
-        if not seen or not history:
+        if require_boundary and (not seen or not history):
             raise ValueError("Runtime did not expose its retained compaction summary; cannot establish a safe next-request bound")
         return history
+
+    def budget_history(self):
+        # A completed provider input count includes cached tokens and runtime
+        # input. Add its output count for the retained next-turn prefix. Changing
+        # tokenizer or uncertain delivery invalidates this measured bound.
+        measured = self.record.get("context_token_bound")
+        return measured if measured is not None else self.record["history"]
 
     async def compact(self):
         await self.connect()
         physical = self.context["rawMaxTokens"]
-        self.last_bound = enforce_budget(self.prompt, self.record["history"], "\n/compact\n" + "x" * COMPACT_RESERVE,
+        self.last_bound = enforce_budget(self.prompt, self.budget_history(), "/compact",
                                          self.config["context_limit_tokens"], physical)
         self.event("status", status="compacting")
         _, boundary = await self.stream("/compact", compact=True)
         if not boundary:
             raise ValueError("Runtime did not report compact_boundary; compaction not confirmed")
         self.record["history"] = self.compacted_history()
+        self.record["context_token_bound"] = None
         self.baselines.clear()
         self.store.write(self.record)
         self.context = await self.client.get_context_usage()
@@ -319,19 +333,24 @@ class Bridge:
         self.event("status", status="continued" if self.record["history"] else "new")
         physical = self.context["rawMaxTokens"]
         limit = min(self.config["context_limit_tokens"] or physical, physical - OUTPUT_RESERVE)
+        # Reject an impossible mandatory request before spending a model call
+        # compacting history that cannot make it fit.
+        empty, _ = make_context(request, {})
+        empty = excerpt(empty, limit - prompt_bound(self.prompt, [], ""))
+        enforce_budget(self.prompt, [], encode(empty), self.config["context_limit_tokens"], physical)
         # Proactively compact before the summary request itself is too large.
-        if self.record["history"] and prompt_bound(self.prompt, self.record["history"], "") + COMPACT_RESERVE + OUTPUT_RESERVE >= limit:
+        if self.record["history"] and prompt_bound(self.prompt, self.budget_history(), "") + COMPACT_RESERVE + OUTPUT_RESERVE >= limit:
             await self.compact()
         payload, baseline = make_context(request, self.baselines)
-        mandatory = prompt_bound(self.prompt, self.record["history"], "")
-        if prompt_bound(self.prompt, self.record["history"], encode(payload)) > limit:
+        mandatory = prompt_bound(self.prompt, self.budget_history(), "")
+        if prompt_bound(self.prompt, self.budget_history(), encode(payload)) > limit:
             if self.record["history"]:
                 await self.compact()
                 payload, baseline = make_context(request, self.baselines)
-                mandatory = prompt_bound(self.prompt, self.record["history"], "")
+                mandatory = prompt_bound(self.prompt, self.budget_history(), "")
             payload = excerpt(payload, limit - mandatory)
         text = encode(payload)
-        self.last_bound = enforce_budget(self.prompt, self.record["history"], text,
+        self.last_bound = enforce_budget(self.prompt, self.budget_history(), text,
                                          self.config["context_limit_tokens"], physical)
         if not self.record["first_prompt"]:
             self.record["first_prompt"] = request["instruction"]
@@ -381,12 +400,13 @@ class Bridge:
             await self.disconnect()
             self.config = config
             self.record["config"] = dict(config)
+            self.record["context_token_bound"] = None
             self.baselines.clear()
             self.store.write(self.record)
             return config
         if method in ("new", "clear", "resume"):
             await self.fresh(params.get("id") if method == "resume" else None)
-            return {"id": self.record["id"]}
+            return {"id": self.record["id"], "config": self.config}
         if method == "save":
             self.record["saved"] = True
             self.store.write(self.record)
@@ -419,10 +439,11 @@ class Bridge:
             if self.client:
                 self.context = await self.client.get_context_usage()
             return {"config": self.config, "conversation": self.record["id"], "saved": self.record["saved"],
+                    "resolved_model": self.context.get("model"),
                     "sticky": self.sticky, "occupancy": self.context.get("totalTokens"),
                     "occupancy_provenance": "runtime estimate, not cumulative billed tokens",
-                    "physical_context": self.context.get("rawMaxTokens"), "last_prompt_byte_bound": self.last_bound,
-                    "budget": "conservative UTF-8 byte bound plus 16,384 runtime/framing tokens; not a provider-side cap",
+                    "physical_context": self.context.get("rawMaxTokens"), "last_prompt_bound": self.last_bound,
+                    "budget": "provider-counted retained prefix or UTF-8 byte bound, plus new UTF-8 bytes and 16,384 runtime/framing tokens; not a provider-side cap",
                     "output_reserve": OUTPUT_RESERVE, "cumulative_usage": self.record["usage"],
                     "cumulative_cost_usd": self.record["cost_usd"], "billing": self.billing,
                     "cache": {"ttl_seconds": self.cache_ttl, "provenance": self.cache_provenance,
@@ -445,6 +466,12 @@ class Bridge:
                     send({"jsonrpc": "2.0", "id": self.active, "result": result})
                 except Exception as error:
                     self.baselines.clear()
+                    self.record["context_token_bound"] = None
+                    if method in ("turn", "compact"):
+                        with contextlib.suppress(Exception):
+                            await self.disconnect()
+                            self.record["history"] = self.compacted_history(require_boundary=False)
+                            self.store.write(self.record)
                     # Invalid edit envelopes retain raw output for inspection.
                     send({"jsonrpc": "2.0", "id": self.active, "error": {"code": -32000, "message": str(error)}})
                 finally:
@@ -455,10 +482,15 @@ class Bridge:
             self.store.close(self.record)
 
     async def run(self):
+        loop = asyncio.get_running_loop()
+        owner = asyncio.current_task()
+        loop.add_signal_handler(signal.SIGTERM, owner.cancel)
+        reader = asyncio.StreamReader(limit=8192)
+        transport, _ = await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin.buffer)
         worker = asyncio.create_task(self.worker())
         try:
             while True:
-                frame = await asyncio.to_thread(read_frame)
+                frame = await read_frame(reader)
                 if frame is None:
                     break
                 method = frame.get("method")
@@ -471,6 +503,15 @@ class Bridge:
                         send({"jsonrpc": "2.0", "id": frame["id"], "result": {"canceled": True}})
                     if method == "shutdown":
                         break
+                elif self.busy and method in ("info", "list", "save", "sticky"):
+                    try:
+                        value = await self.handle(method, frame.get("params", {}))
+                        send({"jsonrpc": "2.0", "id": frame.get("id"), "result": value})
+                    except Exception as error:
+                        send({"jsonrpc": "2.0", "id": frame.get("id"), "error": {"code": -32000, "message": str(error)}})
+                elif self.busy and method == "models" and self.server:
+                    send({"jsonrpc": "2.0", "id": frame.get("id"), "result": {
+                        "models": self.server.get("models", []), "presets": PRESETS, "config": self.config}})
                 elif self.busy:
                     send({"jsonrpc": "2.0", "id": frame.get("id"), "error": {
                         "code": -32001, "message": "Conversation busy; draft retained. Cancel the active request before switching state."}})
@@ -484,6 +525,7 @@ class Bridge:
                     await self.client.interrupt()
             await self.queue.put(None)
             await worker
+            transport.close()
 
 
 def main():
