@@ -2,7 +2,7 @@
 
 A personal Neovim plugin for quick, deliberate collaboration with Claude while editing text. Select something, open a small prompt float near the cursor, say what you want, and keep writing.
 
-**This repository currently describes the plugin we intend to build. The commands below are proposed behavior, not an installed implementation.** The [specification](SPEC.md) separates requirements, proposed implementation choices, and questions still to settle.
+**This repository contains the implementation baseline, not a working plugin.** The [specification](SPEC.md) defines the common behavior for later independent implementations and identifies the runtime evidence each must supply.
 
 ## What it is
 
@@ -27,7 +27,7 @@ The intended starting model is `claude-haiku-5-5`, with a 100,000-token prompt b
 
 The official name is **Claude Agent SDK**, singular. Anthropic provides Python and TypeScript packages. The Python SDK's source is public and MIT-licensed; that does not make the underlying Claude Code runtime open source. Both SDKs use Claude Code, whose terms and distribution are separate. I prefer Python, so that is the backend language.[2]
 
-Lua will communicate with a local Python bridge process. The proposed transport is stdio RPC, similar to an LSP; a WebSocket is an alternative, not a requirement. On first use, the plugin will use system Python to create its own virtual environment, install the latest `claude-agent-sdk` with pip, and run the bridge with that environment's Python. The SDK currently requires Python 3.10 or later and bundles its own Claude Code executable, so no separate Claude Code installation is required. The plugin will reuse the environment after setup and report the installed SDK/runtime versions for diagnosis.
+Lua will communicate with a local Python bridge using JSON-RPC over stdio, with LSP-style framing. On first use, the plugin will use system Python to create its own virtual environment, install the latest `claude-agent-sdk` with pip, and run the bridge with that environment's Python. The SDK currently requires Python 3.10 or later and bundles its own Claude Code executable, so no separate Claude Code installation is required. The plugin will reuse the environment after setup and report the installed SDK/runtime versions for diagnosis.
 
 ## Authentication and billing
 
@@ -39,9 +39,9 @@ The desired personal workflow is to reuse existing Claude Code authentication wh
 
 API-key authentication is a documented SDK path and bills as API usage. The plugin must make the active authentication/billing mode visible when known, report uncertainty when it is not known, and never silently switch from subscription credentials to a paid API key.
 
-## Proposed usage
+## Specified usage
 
-The draft uses a `<leader>c` namespace so it can coexist with my current `<leader>i` mappings. Mappings will be configurable. Keeping the familiar `i`/`I` interaction is also an option; installing the plugin must not overwrite my existing mappings without an explicit configuration choice.
+The baseline uses a `<leader>c` namespace so it can coexist with my current `<leader>i` mappings. Mappings will be configurable. Keeping the familiar `i`/`I` interaction is also an option; installing the plugin must not overwrite my existing mappings without an explicit configuration choice.
 
 Here, `x` means Visual mode, `n` Normal mode, and `i` Insert mode. Mode-specific insert behavior and selection tracking are defined in the spec.
 
@@ -49,9 +49,9 @@ Here, `x` means Visual mode, `n` Normal mode, and `i` Insert mode. Mode-specific
 | --- | --- | --- |
 | x | `<leader>c` | Short form of selection replacement. See the timing caveat below. |
 | x | `<leader>cc` | Replace the selection using the instruction entered in a cursor-local float. |
-| n | `<leader>c`, `<leader>cc` | Reuse the previous valid selection for replacement, as requested in the original draft. The alternative of generating at the cursor, like the existing `<leader>i`, remains a design choice. |
+| n | `<leader>c`, `<leader>cc` | Reuse the previous valid selection in this buffer for replacement. Report when there is no valid target. |
 | x | `<leader>ca` | Ask about the selection. Stream the answer into a float without changing the source buffer. |
-| n | `<leader>ca` | Ask a general question. Reusing the last visual ask target needs an explicit rule; see below. |
+| n | `<leader>ca` | Continue the last selected-ask target when it is still valid in this buffer and no replacement or generation has intervened. Otherwise ask generally. |
 | n, i | `<leader>ci` | Generate text at the captured insertion point. Insert-mode mapping is opt-in so ordinary typing is not delayed by a leader prefix. |
 | n | `<leader>cm` | Choose a model from the catalogue exposed by the runtime, then its supported effort and the plugin's context limit. |
 | n | `<leader>cM` | Enter a model expression manually. |
@@ -62,15 +62,15 @@ Here, `x` means Visual mode, `n` Normal mode, and `i` Insert mode. Mode-specific
 | n | `<leader>cx` | `:NvClaude info`: show context usage, model, persistence, and cache information in a centered float. |
 | n | `<leader>cl` | `:NvClaude list`: pick a saved conversation to resume. |
 
-All actions will also be available through `:NvClaude`, with command completion. `:NvClaude compact` requests compaction manually.
+All actions will also be available through `:NvClaude`, with command completion. `:NvClaude compact` requests compaction manually; `:NvClaude cancel` interrupts the active request without applying a partial edit.
 
 ### Mapping timing
 
 Native Neovim mappings cannot distinguish a short mapping merely by how quickly you typed it. If `<leader>c` is both an action and a prefix for `<leader>cc`, Neovim normally waits for another key or the mapping timeout. `'timeoutlen'` controls that wait. WhichKey's display delay is a separate setting.[4]
 
-The desired quick invocation is still a requirement. The spec proposes retaining native prefix behavior initially, with `<leader>cc` as the unambiguous action, and leaves a custom fast-tap dispatcher as an explicit alternative. The existing `<leader>i` interaction should be the usability reference, not a timing claim about what its implementation does.
+The baseline uses native prefix behavior, with `<leader>cc` as the unambiguous action. It does not install a custom fast-tap dispatcher or change global mapping timeouts. The existing `<leader>i` interaction remains the usability reference.
 
-Similarly, a normal-mode `<leader>ca` cannot acquire two different meanings solely from ordinary mapping lookup. General ask and reuse-the-last-visual-ask must remain distinguishable. The proposed deterministic alternative is `:NvClaude ask previous`; the original speed-sensitive behavior remains an open interaction decision.
+Normal-mode `<leader>ca` uses the last content action and target validity, not typing speed, to distinguish a selected-ask follow-up from a general question. `:NvClaude ask` always asks generally; `:NvClaude ask previous` explicitly reuses the selected-ask target or reports that none is available. These are the specification's deterministic replacements for the original draft's timing-dependent meanings.
 
 ### Models, effort, and context limits
 
@@ -120,13 +120,13 @@ Saved conversations survive inactivity. Sticky mode makes conversations persiste
 - `:NvClaude info` separates current context occupancy from cumulative usage and labels estimated cache information.
 - `:NvClaude list` shows saved conversations, newest first, as `YY:MM:DD:HH:MM:SS - <Initial prompt...>`.
 
-The SDK writes session transcripts to disk by default.[6] "Ephemeral" therefore needs an explicit storage policy, not just omission from a picker. The spec calls out how temporary storage and saving a live conversation must be resolved before implementation.
+The SDK writes session transcripts to disk by default.[6] Here, ephemeral means temporary storage, not memory-only operation. The plugin tracks its own sessions, retains their complete history on save, and removes unsaved transcripts on expiry or shutdown. Startup cleanup must not touch sessions owned by another live instance or unrelated Claude Code conversations.
 
 ## Output character handling
 
 The original `watermarks` command name is retained, but this feature is **punctuation normalization**, not AI detection or watermark removal. An em dash is an ordinary Unicode punctuation character, not evidence that text came from a model.
 
-- `:NvClaude watermarks allow` leaves output unchanged. Proposed default.
+- `:NvClaude watermarks allow` leaves output unchanged. This is the default.
 - `:NvClaude watermarks remove` removes characters in an explicit, documented character set.
 - `:NvClaude watermarks replace` substitutes those characters with configured ASCII equivalents.
 
@@ -140,7 +140,7 @@ Normalization applies only to displayed or inserted output. The raw assistant re
 
 Changing the system prompt can invalidate the cached prefix. It does not inherently require deleting the conversation. Recent Claude Code runtimes also snapshot system prompts, so the implementation must deliberately arrange for edits to take effect, rather than merely changing a Python variable. Sticky mode controls retention, not cache validity.
 
-The [specification](SPEC.md#model-input-and-output-contract) contains the proposed replacement system prompt. It defines the edit target separately from supporting context, treats buffer contents as data, distinguishes snapshots from diffs, and keeps generated replacement text free of explanatory wrappers.
+The [specification](SPEC.md#model-input-and-output-contract) contains the replacement system prompt. It defines edit targets separately from supporting context, treats buffer contents as data, and distinguishes snapshots from diffs. Ask returns streaming prose. Editing returns a validated JSON result containing each target's replacement text, or a clarification that changes no buffer. Only decoded replacement text is inserted; the JSON envelope is not.
 
 ## Sources
 
