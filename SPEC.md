@@ -27,6 +27,34 @@ The owner's working reference is `config/lua/usercmds/nervgen.lua`, read through
 
 Reuse that interaction, not the separate agent conversation panel. Do not copy the old implementation's untracked numeric ranges, output trimming, or dependence on `inf` merely because its UI feels right. The private configuration is a reference, not a runtime or distribution dependency.
 
+### Installable plugin deliverable
+
+The deliverable is a repository branch the owner can install through a plugin manager on another supported Neovim installation. It must not depend on a developer checkout, the private `config` symlink, `inf`, or absolute paths from this machine. A merge into master is not required to use the plugin; lazy.nvim can select nightly or a benchmark candidate branch.
+
+Expose `require("nvim-claude").setup(opts)`. In lazy.nvim the entry uses `main = "nvim-claude"` and `opts = {}` so its normal setup mechanism calls that module. Setup registers `:NvClaude` with completion and the README's default Normal/Visual bindings without requiring authentication or a successful network install first. Repeated setup must not duplicate commands, mappings, processes, or autocmds. Dependency provisioning begins asynchronously on first backend use.
+
+Use a common `opts.keys` contract so comparison candidates can be swapped without rewriting configuration. Omitted keys use these defaults; a string replaces that action's mapping, `false` disables that mapping, and `keys = false` disables all plugin mappings. Insert-mode generation remains opt-in. Apply the mapping semantics specified below, including preserving pre-existing user mappings unless the user explicitly configures a replacement.
+
+| Key option | Default | Modes |
+| --- | --- | --- |
+| `replace` | `<leader>cc` | Normal, Visual |
+| `replace_short` | `<leader>c` | Normal, Visual |
+| `ask` | `<leader>ca` | Normal, Visual |
+| `generate` | `<leader>ci` | Normal |
+| `generate_insert` | `false` | Insert |
+| `model` | `<leader>cm` | Normal |
+| `model_manual` | `<leader>cM` | Normal |
+| `clear` | `<leader>cC` | Normal |
+| `new` | `<leader>cn` | Normal |
+| `sticky` | `<leader>cS` | Normal |
+| `save` | `<leader>cs` | Normal |
+| `info` | `<leader>cx` | Normal |
+| `list` | `<leader>cl` | Normal |
+
+Each implementation documents supported Neovim/Python versions and supplies a working lazy.nvim example containing its actual published branch. Verify installation from the pushed repository into a clean configuration, not merely through a local `dir` entry. Check default keys, overridden keys, disabled keys, commands, and first-use setup. The plugin manager installs the candidate; a restart between candidates avoids retaining old Lua modules or bridge processes.
+
+Authentication is a separate boundary. Missing account credentials must not prevent the commands and editor UI from loading. Backend requests explain missing authentication and expose the supported runtime login flow when needed. A bundled executable does not by itself prove a separate credential store. Investigate its actual behavior without copying refresh tokens or silently changing billing mode.
+
 ## Editor interaction
 
 The public namespace is `:NvClaude` with the README's `<leader>c` mappings. Mappings are configurable so the owner can deliberately keep or replace the familiar `i`/`I` bindings.
@@ -348,6 +376,7 @@ These are behavior criteria for eventual implementation, not checks already run.
 11. Punctuation changes only the output copy. Subsequent context reflects the actual buffer while earlier raw assistant text remains unchanged.
 12. Saving a system-prompt override changes the next request, preserves history according to the chosen transition, and resets to the shipped prompt after restarting Neovim.
 13. Actual Neovim interaction verifies prompt keys, prefix timing, follow-ups, floats, cancellation, focus restoration, and ordinary editing while a request runs.
+14. A clean supported Neovim configuration installs the published branch with lazy.nvim, calls setup, exposes commands, honors default/overridden/disabled bindings, and provisions its own Python environment. The installation uses no files from the author's checkout or private configuration.
 
 ## Baseline readiness assessment
 
@@ -366,7 +395,7 @@ All implementations use these same baseline choices. Internal module layout, lib
 
 ### Implementation evidence required
 
-Before claiming completion, demonstrate runtime-announced models, supported manual slugs/effort, no-tools enforcement, authentication, exact session retention, manual and automatic compaction, budget boundaries, and next-request prompt replacement. Then exercise the actual Neovim interaction against the acceptance scenarios. If upstream behavior prevents a required feature, report the concrete limitation; a stub, invented catalogue, silent higher budget, or permanently disabled core path is not a complete implementation.
+Before claiming model-backed behavior works, demonstrate runtime-announced models, supported manual slugs/effort, no-tools enforcement, exact session retention, manual and automatic compaction, budget boundaries, and next-request prompt replacement. Exercise the actual Neovim interaction against the acceptance scenarios. Missing user credentials are reported separately from plugin installation: the real authentication path must be implemented, but an unavailable account is not a reason to hide commands or replace the backend with a mock. State which credential-dependent checks were not exercised. If upstream behavior prevents a required feature, report the concrete limitation; a stub, invented catalogue, silent higher budget, or permanently disabled core path is not a complete implementation.
 
 The owner's later comparison runs must start from the same baseline commit, each on its own topic worktree. All install the latest SDK as the product requires, and record their resolved SDK/CLI versions so a moving upstream dependency is not mistaken for a model-quality difference. No comparison runs, model requests, or package installations were started while preparing this baseline.
 

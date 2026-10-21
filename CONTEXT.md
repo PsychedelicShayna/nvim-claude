@@ -79,15 +79,17 @@ The owner chose NeoPi's development conventions, adapted to this smaller reposit
 - Development PRs target nightly. Use merge commits, preserving signed commit provenance; do not squash or rebase.
 - Master receives only promotions from nightly. No direct feature or hotfix PR into master. Promotion is a separate owner decision.
 - No canary batches for this project.
-- Use NeoPi's canonical triage roles alongside its type, priority, effort, and PR-state vocabulary. The owner-approved configuration is in `docs/agents/`; repository-specific workflow is in `docs/policy/README.md`.
+- Preserve NeoPi's complete issue-label vocabulary, including sizing, queue, review, upstream, and downstream axes. Filing and classification rules are in `docs/agents/`; human-facing repository policy is in `docs/policy/README.md`.
 
-This section records the intended workflow, not proof that remote branches or protections already exist. Bootstrap and protection setup must be reported separately from policy documentation.
+The owner enabled Standard Protection, ruleset `25543973`, on master/default and nightly. Branch protection does not replace the owner-only promotion rule. Agent-facing documentation lives in `docs/agents`; use CONTEXT.md for domain decisions rather than creating a separate ADR tree.
 
 ## Planned implementation comparison
 
-The current assignment establishes the common baseline only. The owner intends to compare complete plugin implementations built independently in separate worktrees, not divide one implementation among agents. Planned candidates include Astra in NeoPi, Astra in Codex CLI, and Sol 6.1; Opus 5.5 is a possible additional candidate. The Astra runs are intended to use extra-high reasoning. This is a plan for later, not authorization to create or launch those runs now.
+The owner is preparing four initial independent runs: GPT-6 Astra in NeoPi and Codex CLI, and Sol 6.1 in NeoPi and Codex CLI. Sol runs use extra-high reasoning; preserve the operator's actual model and effort selection rather than substituting another model. Opus 5.5 in Claude Code and NeoPi are later candidates in the six-run comparison. Each run implements the whole plugin, not a slice assigned to a team. Preparing this baseline does not launch those runs.
 
 SPEC.md settles the shared interaction and storage choices. Start every comparison worktree from the same baseline commit and retain its behavior contract. Module design and presentation styling can differ; dropping a required feature cannot count as finishing the comparison.
+
+The separate `benchmark` branch and launcher checkout carry benchmark-specific entry instructions. There, the owner's word "implement" starts one run in a model-and-harness-named worktree. The deliverable is a pushed branch installable through lazy.nvim, with commands, default/configurable bindings, and automatic Python/SDK setup as specified. Candidates remain unmerged until the owner selects one. Retain their remote branches as benchmark records while removing completed local worktrees. Ordinary development on nightly retains its usual merge-and-cleanup workflow.
 
 ## Runtime evidence still required
 
