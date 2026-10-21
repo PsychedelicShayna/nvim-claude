@@ -101,17 +101,16 @@ end
 local function visual_region(buf, mode)
   local anchor = vim.fn.getpos("v")
   local cursor = vim.fn.getcurpos()
-  local a = { anchor[2] - 1, anchor[3] - 1 }
-  local c = { cursor[2] - 1, cursor[3] - 1 }
-  local inclusive = vim.o.selection ~= "exclusive"
-  local region = vim.region(buf, a, c, mode, inclusive)
+  local a = { anchor[2] - 1, anchor[3] - 1, anchor[4] or 0 }
+  local c = { cursor[2] - 1, cursor[3] - 1, cursor[4] or 0 }
+  local region = vim.fn.getregionpos(anchor, cursor, {
+    type = mode,
+    exclusive = vim.o.selection == "exclusive",
+  })
   local rows = {}
-  for row in pairs(region) do
-    if type(row) == "number" then
-      table.insert(rows, row)
-    end
+  for _, pair in ipairs(region) do
+    table.insert(rows, pair[1][2] - 1)
   end
-  table.sort(rows)
   return region, rows, a, c
 end
 
@@ -121,17 +120,15 @@ function M.capture_visual(operation)
   if mode ~= "v" and mode ~= "V" and mode ~= "\22" then
     return nil, "A Visual selection is required"
   end
-  local region, rows, anchor, cursor = visual_region(buf, mode)
+  local region, rows = visual_region(buf, mode)
   if #rows == 0 then
     return nil, "The Visual selection is empty"
   end
 
   if mode == "\22" then
-    local left = math.min(vim.fn.virtcol({ anchor[1] + 1, anchor[2] + 1 }), vim.fn.virtcol({ cursor[1] + 1, cursor[2] + 1 })) - 1
-    local right = math.max(vim.fn.virtcol({ anchor[1] + 1, anchor[2] + 1 }), vim.fn.virtcol({ cursor[1] + 1, cursor[2] + 1 }))
-    if vim.o.selection == "exclusive" then
-      right = math.max(left, right - 1)
-    end
+    local block_start, block_end = region[1][1], region[1][2]
+    local left = vim.fn.virtcol({ block_start[2], block_start[3], block_start[4] }) - 1
+    local right = vim.fn.virtcol({ block_end[2], block_end[3], block_end[4] })
     local segments = {}
     local tabstop = vim.bo[buf].tabstop
     for index, row in ipairs(rows) do
@@ -160,8 +157,13 @@ function M.capture_visual(operation)
   end
 
   local first, last = rows[1], rows[#rows]
-  local start_col = region[first][1]
-  local end_col = region[last][2] == -1 and #line_at(buf, last) or region[last][2]
+  local start_pos = region[1][1]
+  local end_pos = region[#region][2]
+  local start_col = start_pos[3] - 1
+  local last_line = line_at(buf, last)
+  local end_start = math.min(end_pos[3] - 1, #last_line)
+  local end_char = vim.fn.strcharpart(last_line:sub(end_start + 1), 0, 1)
+  local end_col = math.min(#last_line, end_start + #end_char)
   local text = table.concat(vim.api.nvim_buf_get_text(buf, first, start_col, last, end_col, {}), "\n")
   return make_target(buf, "char", {
     {
