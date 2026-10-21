@@ -1,5 +1,12 @@
 # nvim-claude
 
+> [!IMPORTANT]
+> Round 1 metadata-only post-run correction. This candidate ran with GPT-6 Astra, `openai-codex/gpt-6-astra`, at **xhigh** effort in NeoPi.
+> Original branch: `experimental/benchmark-astra-6-high-neopi-20261021-7c93b2`.
+> Original delivered commit: [`7521eceaa66b4a4e0f0a6d329278c592020965ee`](https://github.com/PsychedelicShayna/nvim-claude/commit/7521eceaa66b4a4e0f0a6d329278c592020965ee).
+> Corrected installable branch: [`experimental/round-1-astra-6-xhigh-neopi-20261021-7c93b2`](https://github.com/PsychedelicShayna/nvim-claude/tree/experimental/round-1-astra-6-xhigh-neopi-20261021-7c93b2).
+> The branch rename and this README-only commit correct attribution after delivery. They do not change the implementation, rerun the benchmark, or rewrite the historical run record.
+
 Cursor-local prompts for Neovim, with a Lua editor client and a Python Claude Agent SDK bridge. Ask streams into a separate float. Replacement and generation apply only validated, completed output to the captured target.
 
 **This benchmark candidate does not pass the complete specification.** Its default 100,000-token hard budget currently refuses model requests. Claude Code 2.1.306 exposes context telemetry and automatic-compaction settings, but the inspected SDK/runtime interface does not provide an authoritative next-request token count or a hard input-token limit. The plugin does not claim that an estimate protects the Haiku pricing boundary. See [the run record](docs/agents/benchmark-result.md) for exercised behavior and unresolved acceptance criteria.
@@ -11,7 +18,7 @@ Linux or macOS, Neovim 0.11+, and Python 3.10+ with `venv` and `pip`. Verified v
 ```lua
 {
   "PsychedelicShayna/nvim-claude",
-  branch = "experimental/benchmark-astra-6-high-neopi-20261021-7c93b2",
+  branch = "experimental/round-1-astra-6-xhigh-neopi-20261021-7c93b2",
   main = "nvim-claude",
   opts = {},
 }
