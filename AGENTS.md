@@ -1,14 +1,16 @@
-# Development rules
+# Benchmark mode
 
 Read CONTEXT.md before domain work. Read SPEC.md before designing or implementing plugin behavior; it defines the shared behavior and acceptance criteria. Read docs/agents/domain.md when exploring domain terms, invariants, or decisions. Runtime limitations need evidence, not silent scope reductions.
 
-This repository is the common baseline for independent end-to-end implementation comparisons. Implementation must await explicit owner instruction. Preparing documentation does not start a run.
+When the owner says **implement**, build one complete, independent candidate using this session's selected model and harness. Before creating a branch or editing anything, read [docs/agents/benchmark.md](docs/agents/benchmark.md). That instruction is the explicit start signal; do not ask the owner to repeat the spec or choose a worktree name.
+
+The `benchmark` checkout is a shared launcher. Never implement in it. Create your own model-and-harness-named worktree using the pinned-baseline procedure. Deliver a pushed, lazy.nvim-installable candidate branch and a draft comparison PR. **Do not merge candidates into benchmark, nightly, or master.** Retain the remote candidate branch; clean up your local worktree after delivery. Do not start other models' runs.
 
 ## Repository workflow
 
 Follow the workspace policy where supplied. Repository-specific values and promotion rules live in docs/policy/README.md; read it before creating branches, commits, issues, or PRs.
 
-Use topic worktrees based on origin/nightly. Development PRs target nightly. Master receives only a separate owner-approved promotion from nightly. Use signed commits and merge commits, never squash or rebase. There are no canary batches in this repository. docs/policy/README.md defines delivery, cleanup, and the exception for owner-authorized benchmark branches.
+For this benchmark, docs/agents/benchmark.md defines the pinned remote-nightly seed, shared launcher baseline, worktree naming, unmerged branch delivery, and cleanup exception. The ordinary nightly merge workflow in docs/policy/README.md remains applicable only to non-benchmark work. Use signed commits and preserve provenance; owner selection is required before any candidate integration.
 
 Keep changes small and commit logical units. Preserve the owner's original drafts before revisions. Every commit needs a descriptive body and model attribution; verify its signature before pushing.
 
