@@ -2,7 +2,7 @@
 
 nvim-claude is a planned Neovim plugin for explicit, cursor-local collaboration with Claude. It replaces the owner's old `inf`-backed inline workflow without turning the editor into a chat sidebar or giving the model file-editing tools.
 
-This is a single-context repository. [README.md](README.md) explains the product; [SPEC.md](SPEC.md) defines the shared implementation baseline and required runtime evidence. No plugin implementation exists yet. Preparing the baseline does not authorize starting the later implementation runs.
+This is the benchmark launcher baseline, not a plugin implementation. [README.md](README.md) explains the product and [SPEC.md](SPEC.md) defines its complete behavior. Root AGENTS.md and [the benchmark run contract](docs/agents/benchmark.md) make the owner's word "implement" sufficient to start one independent candidate. Preparing or inspecting this launcher alone does not start a run.
 
 ## Confirmed direction
 
@@ -75,8 +75,8 @@ The owner chose NeoPi's development conventions, adapted to this smaller reposit
 
 - GitHub repository and issue tracker: `PsychedelicShayna/nvim-claude`.
 - Stable/default branch: `master`. Integration branch: `nightly`.
-- Features, fixes, and documentation changes use topic branches in their own worktrees, based on `origin/nightly`.
-- Development PRs target nightly. Use merge commits, preserving signed commit provenance; do not squash or rebase.
+- Ordinary development uses topic worktrees from `origin/nightly` and PRs targeting nightly. Benchmark runs use the pinned remote-nightly seed and launcher baseline in `docs/agents/benchmark.md`.
+- Candidate branches and draft comparison PRs targeting benchmark remain unmerged until owner selection. Use signed commits and preserve their history; do not squash or rebase.
 - Master receives only promotions from nightly. No direct feature or hotfix PR into master. Promotion is a separate owner decision.
 - No canary batches for this project.
 - Preserve NeoPi's complete issue-label vocabulary, including sizing, queue, review, upstream, and downstream axes. Filing and classification rules are in `docs/agents/`; human-facing repository policy is in `docs/policy/README.md`.
@@ -89,7 +89,7 @@ The owner is preparing four initial independent runs: GPT-6 Astra in NeoPi and C
 
 SPEC.md settles the shared interaction and storage choices. Start every comparison worktree from the same baseline commit and retain its behavior contract. Module design and presentation styling can differ; dropping a required feature cannot count as finishing the comparison.
 
-The separate `benchmark` branch and launcher checkout carry benchmark-specific entry instructions. There, the owner's word "implement" starts one run in a model-and-harness-named worktree. The deliverable is a pushed branch installable through lazy.nvim, with commands, default/configurable bindings, and automatic Python/SDK setup as specified. Candidates remain unmerged until the owner selects one. Retain their remote branches as benchmark records while removing completed local worktrees. Ordinary development on nightly retains its usual merge-and-cleanup workflow.
+This `benchmark` branch carries the separate run instructions. The owner starts a fresh harness in this checkout, selects the model/effort, and says "implement". That starts one run in a model-and-harness-named worktree. The deliverable is a pushed branch installable through lazy.nvim, with commands, default/configurable bindings, and automatic Python/SDK setup. Candidates remain unmerged until owner selection; retain their remote branches while removing completed local worktrees. See `docs/agents/benchmark.md` for the self-contained procedure. Ordinary development on nightly retains its usual merge-and-cleanup workflow.
 
 ## Runtime evidence still required
 
