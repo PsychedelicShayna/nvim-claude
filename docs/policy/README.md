@@ -64,3 +64,14 @@ The owner requested NeoPi's active Standard Protection rule, adapted to this rep
 - Preserve the reference rule's extra approval requirement for unattributed changes where GitHub exposes it.
 
 This section describes the requested configuration, not proof that protection is enabled. Workspace policy reserves ruleset/protection changes to the owner. A normal PR requirement does not itself restrict master PRs to a nightly head; the nightly-only promotion rule must also be respected when selecting and merging PRs.
+
+The ready-to-apply payload is [branch-protection.json](branch-protection.json). It was compared with NeoPi's live Standard Protection ruleset during setup. No ruleset was present in this repository at that inspection.
+
+From a checkout containing this file, the owner can apply it once:
+
+```sh
+gh api --method POST repos/PsychedelicShayna/nvim-claude/rulesets \
+  --input docs/policy/branch-protection.json
+```
+
+Inspect existing rulesets before applying it again to avoid creating duplicates. This is an owner handoff, not an agent setup command: workspace policy explicitly says, "Rulesets and branch protection are repository settings; agents do not change them."
