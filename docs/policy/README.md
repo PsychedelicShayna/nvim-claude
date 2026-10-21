@@ -8,8 +8,9 @@ Use the workspace policy when it is supplied. This file records the owner's repo
 | --- | --- | --- |
 | Stable/default | `master` | A separate promotion PR from `nightly` |
 | Integration | `nightly` | Topic-branch PRs |
+| Benchmark launcher | `benchmark` | Owner-authorized launcher setup PRs only; no candidate merges |
 
-Create each topic branch in its own worktree from the fetched remote integration branch:
+For ordinary development, create each topic branch in its own worktree from the fetched remote integration branch. Benchmark runs use the pinned remote-nightly seed and launcher fast-forward procedure in [the run contract](../agents/benchmark.md).
 
 ```sh
 git fetch origin
@@ -33,7 +34,7 @@ Keep local base branches aligned with their remote counterparts. Never discard u
 
 ## Nightly and promotion
 
-Authoring agents merge their own development PRs into nightly at roughly 80% confidence. Record confidence and relevant failing or skipped checks in the merge note. CI and optional review bots are advisory, not merge gates. The owner tests the integration result.
+Authoring agents merge their own ordinary development PRs into nightly at roughly 80% confidence. Record confidence and relevant failing or skipped checks in the merge note. CI and optional review bots are advisory, not merge gates. The owner tests the integration result. Benchmark candidate PRs are excluded: they stay draft and unmerged until owner selection.
 
 The integrator does not idle, wait for checks, or poll review status. Delegate watching to a cheap poller and advance the next ready, owner-authorized work. A watcher reports results for any needed follow-up; it does not hold up nightly delivery.
 
@@ -43,7 +44,7 @@ This project has no canary batches. Documentation-only changes need no routine C
 
 ## Benchmark branch exception
 
-The owner has authorized a separate benchmark launcher branch and implementation candidate branches. The launcher setup is separate work, not an instruction in this policy. Candidates are comparison deliverables, not ordinary PRs ready for nightly. Retain owner-authorized benchmark remote branches after their runs, even when their local worktrees are removed. Do not merge candidates until the owner selects the result and authorizes integration. Ordinary topic-branch cleanup still applies to other work.
+This checkout is the owner-authorized `benchmark` launcher. [docs/agents/benchmark.md](../agents/benchmark.md) is the run contract. Launcher setup PRs target benchmark and can merge as preparation; implementation candidate PRs target benchmark only as draft comparison records and never merge automatically. Candidate delivery is a pushed installable branch, not integration into nightly. Retain remote candidate branches and the intentionally shared launcher checkout while removing completed candidate worktrees and local branches. The owner selects a winner and later restores ordinary integration instructions; candidates do not make that decision themselves. Ordinary topic-branch cleanup still applies to setup and non-benchmark work.
 
 ## Release cadence
 

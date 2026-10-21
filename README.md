@@ -2,7 +2,9 @@
 
 A personal Neovim plugin for quick, deliberate collaboration with Claude while editing text. Select something, open a small prompt float near the cursor, say what you want, and keep writing.
 
-**This repository contains the implementation baseline, not a working plugin.** The [specification](SPEC.md) defines the common behavior for later independent implementations and identifies the runtime evidence each must supply.
+**This is the shared benchmark launcher, not a working plugin.** The [specification](SPEC.md) defines the common behavior for independent implementations. Start a fresh harness in the `benchmark` checkout, select the model and effort, and say **implement**. Root AGENTS.md points it to the [complete run instructions](docs/agents/benchmark.md), including a separate model/harness worktree and unmerged candidate delivery.
+
+The first four runs are GPT-6 Astra and Sol 6.1, each in NeoPi and Codex CLI. Each candidate implements the entire plugin. The owner installs its published branch through lazy.nvim, compares it with the others, and chooses what to integrate later. Candidate remote branches remain available as benchmark records; their local worktrees are disposable. Do not implement in this shared launcher.
 
 ## What it is
 
