@@ -4,6 +4,7 @@ M.root = root
 
 local function fail(message)
   local job = M.job
+  if M.stderr and M.stderr ~= '' then message = message .. '\n' .. M.stderr:sub(-1500) end
   M.ready, M.job = false, nil
   if job and job > 0 then
     pcall(vim.fn.chanclose, job, 'stdin')
@@ -60,8 +61,7 @@ function M.start(opts, events, callback)
       end
     end,
     on_stderr = function(_, chunks)
-      local text = table.concat(chunks, '\n')
-      if text ~= '' then vim.schedule(function() vim.notify('nvim-claude: ' .. text, vim.log.levels.DEBUG) end) end
+      M.stderr = ((M.stderr or '') .. table.concat(chunks, '\n')):sub(-8192)
     end,
     on_exit = function(job, code)
       if not M.closing and M.job == job then fail('Bridge exited (' .. code .. '); retry or inspect :messages') end

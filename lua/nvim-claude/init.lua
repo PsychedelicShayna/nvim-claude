@@ -33,7 +33,11 @@ local function remember(target)
 end
 
 local function events(method, params)
-  if method == 'setup' then message(params.message); return end
+  if method == 'setup' then
+    vim.g.nvclaude_status = params.message
+    api.nvim_echo({ { 'Claude: ' .. params.message, 'ModeMsg' } }, false, {})
+    return
+  end
   if method == 'status' and (not params.generation or params.generation == state.generation) then
     vim.g.nvclaude_status = params.message
     vim.api.nvim_echo({ { 'Claude: ' .. params.message, 'ModeMsg' } }, false, {})
