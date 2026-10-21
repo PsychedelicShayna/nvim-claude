@@ -1,8 +1,8 @@
 # Project context
 
-nvim-claude is a planned Neovim plugin for explicit, cursor-local collaboration with Claude. It replaces the owner's old `inf`-backed inline workflow without turning the editor into a chat sidebar or giving the model file-editing tools.
+nvim-claude is a Neovim plugin candidate for explicit, cursor-local collaboration with Claude. It replaces the owner's old `inf`-backed inline workflow without turning the editor into a chat sidebar or giving the model file-editing tools.
 
-This is the benchmark launcher baseline, not a plugin implementation. [README.md](README.md) explains the product and [SPEC.md](SPEC.md) defines its complete behavior. Root AGENTS.md and [the benchmark run contract](docs/agents/benchmark.md) make the owner's word "implement" sufficient to start one independent candidate. Preparing or inspecting this launcher alone does not start a run.
+This is the independent Astra 6 high / NeoPi benchmark candidate. [README.md](README.md) describes installation and current limitations; [SPEC.md](SPEC.md) remains the unchanged acceptance contract. The editor and SDK bridge are implemented, but numeric hard-budget requests fail closed and the candidate does not satisfy the full specification. [The run record](docs/agents/benchmark-result.md) separates exercised checks from unresolved runtime criteria.
 
 ## Confirmed direction
 
@@ -85,15 +85,17 @@ The owner enabled Standard Protection, ruleset `25543973`, on master/default and
 
 ## Planned implementation comparison
 
-The owner is preparing four initial independent runs: GPT-6 Astra in NeoPi and Codex CLI, and Sol 6.1 in NeoPi and Codex CLI. Sol runs use extra-high reasoning; preserve the operator's actual model and effort selection rather than substituting another model. Opus 5.5 in Claude Code and NeoPi are later candidates in the six-run comparison. Each run implements the whole plugin, not a slice assigned to a team. Preparing this baseline does not launch those runs.
+The owner launched six independent NeoPi candidates comparing Astra 6 and Sol 6.1 at different reasoning levels. Native Codex harness comparisons and Opus 5.5 are later rounds. This candidate retains its owner-selected `astra-6-high` branch identity. It used no implementation helpers, control socket, other worktrees, or other sessions.
 
 SPEC.md settles the shared interaction and storage choices. Start every comparison worktree from the same baseline commit and retain its behavior contract. Module design and presentation styling can differ; dropping a required feature cannot count as finishing the comparison.
 
-This `benchmark` branch carries the separate run instructions. The owner starts a fresh harness in this checkout, selects the model/effort, and says "implement". That starts one run in a model-and-harness-named worktree. The deliverable is a pushed branch installable through lazy.nvim, with commands, default/configurable bindings, and automatic Python/SDK setup. Candidates remain unmerged until owner selection; retain their remote branches while removing completed local worktrees. See `docs/agents/benchmark.md` for the self-contained procedure. Ordinary development on nightly retains its usual merge-and-cleanup workflow.
+The original `benchmark` launcher carries the shared run instructions. This candidate started from its pinned baseline and is delivered through a retained remote branch and unmerged draft comparison PR. Owner selection is required before integration. See `docs/agents/benchmark.md` for the run and cleanup procedure.
 
 ## Runtime evidence still required
 
 The specification is ready for implementation, not proof of runtime support. Each implementation must establish catalogue discovery, no-tools enforcement, authentication, compaction, strict budget accounting, exact session retention, and prompt replacement with the actual installed SDK and CLI. Record their versions because latest-on-setup can resolve differently across runs.
+
+This run observed SDK 0.2.170 with Claude Code 2.1.306. Initialization announced models and effort levels, and exposed context telemetry. Numeric budget dispatch is refused because no authoritative next-request token count or hard input ceiling was established. Haiku 5.5 metadata also reports `supportsThinkingOff=false`. No model inference was sent to bypass either constraint. Empty-session lifecycle checks do not establish exact resumption of populated model history.
 
 ## Naming
 
