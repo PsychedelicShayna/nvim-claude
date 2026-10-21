@@ -107,6 +107,8 @@ Prompt floats grow with multiline input, up to ten lines and the available scree
 
 An empty generation completes without changing the buffer or its undo history. Missing saved runtime transcripts are reported rather than silently replacing history with an empty conversation.
 
+Blockwise edits preserve unselected virtual cells around partial tabs and wide characters. The request describes both the selected display cells and their underlying UTF-8 span, so the model does not mistake that intentional difference for stale text.
+
 ### Mapping timing
 
 Native Neovim mappings cannot distinguish a short mapping merely by how quickly you typed it. If `<leader>c` is both an action and a prefix for `<leader>cc`, Neovim normally waits for another key or the mapping timeout. `'timeoutlen'` controls that wait. WhichKey's display delay is a separate setting.[4]

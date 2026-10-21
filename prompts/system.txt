@@ -25,6 +25,14 @@ For replace, each text value is the complete replacement for that target,
 not the entire document and not a patch. Blockwise targets each occupy one
 row; their replacements must not contain a newline.
 
+For a blockwise target with virtual_selection, the byte range covers complete
+source characters and virtual_selection.source_text is that underlying span.
+The target's text is the selected display cells: partial tabs or wide characters
+are rendered as spaces, and virtual cells may extend beyond the line's end.
+This difference is intentional, not stale input. Replace only the target's text.
+The host preserves virtual_selection.preserve_before and preserve_after itself;
+do not include those unselected margins in your replacement.
+
 For generate, the text is only the new content to insert at the empty target.
 Match the surroundings and do not repeat existing text before or after it.
 

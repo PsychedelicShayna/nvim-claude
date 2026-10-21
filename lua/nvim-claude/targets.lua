@@ -168,6 +168,9 @@ function M.envelope(target)
     result[#result + 1] = { id = p.part.id, start = p.start, ['end'] = p.finish,
       text = p.part.selected, coordinates = 'zero-based UTF-8 bytes; end-exclusive',
       blockwise = target.kind:sub(1, 1) == '\22',
+      virtual_selection = target.kind:sub(1, 1) == '\22' and p.part.selected ~= p.part.original and {
+        source_text = p.part.original, preserve_before = p.part.prefix, preserve_after = p.part.suffix,
+      } or nil,
       boundary = { before = line:sub(char_start(line, math.max(0, p.start[2] - 80)) + 1, p.start[2]),
         after = end_line:sub(p.finish[2] + 1, char_end(end_line, math.min(#end_line, p.finish[2] + 80))) },
     }
