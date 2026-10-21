@@ -190,4 +190,25 @@ function M.parse(expression, current, options)
   }
 end
 
+function M.runtime_efforts(metadata)
+  if type(metadata) ~= "table" then
+    return nil
+  end
+  local values = metadata.efforts
+    or metadata.supported_efforts
+    or metadata.supportedEfforts
+    or metadata.supportedEffortLevels
+  if type(values) ~= "table" then
+    return nil
+  end
+  local result = {}
+  for _, value in ipairs(values) do
+    local name = type(value) == "table" and (value.id or value.name or value.value) or value
+    if M.is_effort(name) then
+      result[#result + 1] = name
+    end
+  end
+  return #result > 0 and result or nil
+end
+
 return M

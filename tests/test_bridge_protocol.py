@@ -66,6 +66,7 @@ def main() -> None:
         assert result["capabilities"]["configured_no_tools"] is True
         assert result["runtime"]["python"]
         assert result["sdk_version"]
+        uuid.UUID(result["conversation"]["id"])
 
         send(process, {
             "jsonrpc": "2.0",

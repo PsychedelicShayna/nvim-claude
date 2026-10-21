@@ -527,23 +527,6 @@ local function choose_budget(on_select)
   })
 end
 
-local function effort_values(item)
-  if type(item) ~= "table" then
-    return nil
-  end
-  local values = item.efforts or item.supported_efforts or item.supportedEfforts
-  if type(values) ~= "table" or #values == 0 then
-    return nil
-  end
-  local result = {}
-  for _, value in ipairs(values) do
-    local name = type(value) == "table" and (value.id or value.name or value.value) or value
-    if model.is_effort(name) then
-      result[#result + 1] = name
-    end
-  end
-  return #result > 0 and result or nil
-end
 
 local function choose_model()
   ensure_backend(function(start_error)
@@ -565,7 +548,7 @@ local function choose_model()
           end,
           on_select = function(item)
             local selected = item.id or item.value or item.model or item.name
-            local efforts = effort_values(item)
+            local efforts = model.runtime_efforts(item)
             local function finish(selected_effort)
               choose_budget(function(limit)
                 state.model = selected

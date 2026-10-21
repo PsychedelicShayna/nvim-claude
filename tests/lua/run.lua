@@ -38,6 +38,12 @@ equal(parsed.context_limit_tokens, 90000, "retained local limit")
 parsed = assert(model.parse("claude-custom[limit=124k]:xhigh", {}))
 equal(parsed.model, "claude-custom", "explicit limit selector")
 equal(parsed.context_limit_tokens, 124000, "explicit limit value")
+equal(
+  model.runtime_efforts({ supportedEffortLevels = { "low", "xhigh", "unknown" } }),
+  { "low", "xhigh" },
+  "runtime effort metadata"
+)
+
 
 equal(
   punctuation.apply("— – ‘x’ “y” … z", "replace"),
@@ -140,4 +146,22 @@ do
   vim.api.nvim_buf_delete(bufnr, { force = true })
 end
 
+
+do
+  vim.g.mapleader = ","
+  vim.keymap.set("n", "<leader>ca", "<Cmd>let g:nvim_claude_user_map = 1<CR>", {
+    desc = "Existing user ask",
+  })
+  local plugin = require("nvim-claude")
+  plugin.setup({})
+  equal(vim.fn.maparg(",ca", "n", false, true).desc, "Existing user ask", "default preserves user mapping")
+
+  vim.keymap.set("n", "ga", "<Nop>", { desc = "Existing ga" })
+  plugin.setup({ keys = { ask = "ga", replace = false } })
+  equal(vim.fn.maparg("ga", "n", false, true).desc, "Ask Claude", "explicit mapping replaces user mapping")
+  equal(vim.fn.maparg(",cc", "n"), "", "individual mapping can be disabled")
+
+  plugin.setup({ keys = false })
+  equal(vim.fn.maparg("ga", "n"), "", "keys false removes plugin mappings")
+end
 print("lua-behavior=ok")

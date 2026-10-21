@@ -62,7 +62,7 @@ def process_alive(pid: int) -> bool:
 def fresh_conversation(*, sticky: bool = False) -> dict[str, Any]:
     now = time.time()
     return {
-        "id": uuid.uuid4().hex,
+        "id": str(uuid.uuid4()),
         "session_id": None,
         "created_at": now,
         "last_active": now,
@@ -491,6 +491,7 @@ class Bridge:
             model = str(params.get("model") or self.active.get("model") or DEFAULT_MODEL)
             effort_value = params.get("effort", self.active.get("effort", DEFAULT_EFFORT))
             effort = str(effort_value) if effort_value is not None else None
+            thinking_disabled = params.get("thinking") is False or params.get("reasoning") == "off"
             configured_limit = params.get(
                 "context_limit_tokens", self.active.get("context_limit_tokens", DEFAULT_LIMIT)
             )
@@ -504,7 +505,7 @@ class Bridge:
                     f"The mandatory prompt needs at most {mandatory} conservatively counted tokens, "
                     f"which cannot fit the configured {limit}-token budget. Nothing was sent."
                 )
-            await self._ensure_client(model, effort, limit, system_prompt)
+            await self._ensure_client(model, effort, limit, system_prompt, thinking_disabled)
             usage = await self._get_context_usage()
             occupied = int((usage or {}).get("totalTokens", 0))
             next_upper = occupied + len(prompt.encode("utf-8")) + RUNTIME_OVERHEAD_TOKENS
@@ -632,13 +633,25 @@ class Bridge:
         self.context_usage = None
 
     async def _ensure_client(
-        self, model: str, effort: str | None, limit: int | None, system_prompt: str
+        self,
+        model: str,
+        effort: str | None,
+        limit: int | None,
+        system_prompt: str,
+        thinking_disabled: bool = False,
     ) -> None:
         if self.sdk_version is None:
             raise RuntimeError(
                 "claude-agent-sdk is not installed in the plugin environment. Run :NvClaude update or retry provisioning."
             )
-        signature = (model, effort, limit, system_prompt, self.active.get("session_id"))
+        signature = (
+            model,
+            effort,
+            limit,
+            system_prompt,
+            thinking_disabled,
+            self.active.get("session_id"),
+        )
         if self.client is not None and self.client_signature == signature:
             return
         await self._disconnect()
@@ -660,6 +673,7 @@ class Bridge:
             system_prompt=system_prompt,
             model=model,
             effort=effort,
+            thinking={"type": "disabled"} if thinking_disabled else None,
             include_partial_messages=True,
             cwd=self.runtime_dir,
             env=env,
