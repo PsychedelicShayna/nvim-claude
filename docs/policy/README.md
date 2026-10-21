@@ -22,24 +22,38 @@ Keep local base branches aligned with their remote counterparts. Never discard u
 
 ## Commits and pull requests
 
-- Commit small logical changes frequently. During initial setup, commit each file addition or modification separately. Preserve original owner drafts before editorial revisions.
+- Commit small logical changes frequently. Preserve original owner drafts before editorial revisions.
 - Use Conventional Commits, with a subject no longer than 72 characters, a prose body explaining what changed and why, and the verification actually performed.
 - Include `Model: <provider>/<model-id>` and `Co-authored-by: <Model Name> <noreply@<provider-domain>>` on agent commits.
 - Select the supplied agent signing key explicitly for each commit. On the owner's workstation: `git commit -S/home/shayna/.ssh/id_ed25519_github_signing_agents.pub -m "..." -m "..."`. Verify with `git verify-commit HEAD`; never disable signing or change repository signing configuration.
 - Use one issue and PR per coherent change, not one PR per small commit. Fill `.github/PULL_REQUEST_TEMPLATE.md` with observed results and reasons for skipped checks.
 - Push only the topic branch. Review fixes are new commits after pushing, not amendments or force-pushes.
 - Merge commits only. Use `Merge PR #<number>: <conventional PR subject> (@<author>)` as the merge subject. No squash or rebase merging.
-- Remove the topic worktree and local branch after its PR is merged or closed, once all intended work is safely retained.
+- After a PR merges, ensure all intended work is pushed and retained in merged history. Check for uncommitted or unrelated user changes before cleanup; preserve them rather than deleting them. Leave the topic worktree, remove it, then delete its merged local and remote topic branches. Git's merged history and PR refs permit recovery; worktrees are not archives. Owner-authorized retained benchmark remote branches are the exception described below.
 
 ## Nightly and promotion
 
-Authoring agents may merge their own ready development PRs into nightly under workspace policy. Report confidence and any relevant failing or skipped checks. The owner tests the integration result; checks and review bots provide evidence rather than a nightly merge gate.
+Authoring agents merge their own development PRs into nightly at roughly 80% confidence. Record confidence and relevant failing or skipped checks in the merge note. CI and optional review bots are advisory, not merge gates. The owner tests the integration result.
 
-Promotion from nightly into master is a separate owner decision. Agents do not merge that PR. Do not schedule automatic promotions or treat a successful development PR as permission to promote.
+The integrator does not idle, wait for checks, or poll review status. Delegate watching to a cheap poller and advance the next ready, owner-authorized work. A watcher reports results for any needed follow-up; it does not hold up nightly delivery.
 
-This project has no canary batches. Documentation-only changes need no installation or runtime test. Once plugin code exists, verify changed editor behavior in Neovim and document how the owner uses the nightly version. Do not borrow NeoPi's binary build/install commands for this Lua/Python project.
+Promotion from nightly into master is a separate owner decision. Agents do not merge that PR. Do not schedule automatic promotions or treat a successful development PR, label, or check as permission to promote.
 
-Alternative implementation worktrees for the owner's model comparison are experiments, not independent permission to merge competing implementations into nightly. The owner chooses the comparison setup and the result to integrate.
+This project has no canary batches. Documentation-only changes need no routine CI, build, installation, or runtime test. Use focused verification appropriate to the behavior changed. Once plugin code exists, verify changed editor behavior in Neovim and document how the owner uses the nightly version. Do not borrow NeoPi's binary build/install commands for this Lua/Python project.
+
+## Benchmark branch exception
+
+The owner has authorized a separate benchmark launcher branch and implementation candidate branches. The launcher setup is separate work, not an instruction in this policy. Candidates are comparison deliverables, not ordinary PRs ready for nightly. Retain owner-authorized benchmark remote branches after their runs, even when their local worktrees are removed. Do not merge candidates until the owner selects the result and authorizes integration. Ordinary topic-branch cleanup still applies to other work.
+
+## Release cadence
+
+The owner requested a prerelease with assets for each ordinary, unique successful nightly build. Identify each release's exact commit and build ID, and record the SDK versions used. Do not publish duplicate releases for the same build.
+
+An owner-approved merge from nightly into master triggers stable packaging, tagging, and release automation when code ships. This is release automation after the owner's promotion decision, never automatic stable promotion.
+
+If a GitHub asset upload fails, retain the successful build and its metadata, then retry publishing that build without stalling development or rebuilding merely to retry the upload.
+
+This repository currently contains documentation only. It has no build/release automation and no package to publish. The cadence above records the required behavior for when code ships; it does not claim that packaging, tagging, uploads, or installation workflows exist.
 
 ## Reviews and verification
 
@@ -53,9 +67,9 @@ User-facing behavior changes update the relevant docs and changelog. Do not crea
 
 `docs/agents/triage-labels.md` defines the vocabulary. Every issue and PR has a type, one priority, and a state. Effort and readiness are separate axes. `docs/agents/issue-tracker.md` defines tracker operations and preservation of the owner's words.
 
-## Desired branch protection
+## Branch protection
 
-The owner requested NeoPi's active Standard Protection rule, adapted to this repository:
+The owner enabled Standard Protection. The owner's successful response records ruleset ID `25543973` with active enforcement:
 
 - Include the default branch, master, and `refs/heads/nightly`.
 - Require a pull request and allow merge commits only.
@@ -63,15 +77,6 @@ The owner requested NeoPi's active Standard Protection rule, adapted to this rep
 - Block non-fast-forward updates and branch deletion, with no bypass actors.
 - Preserve the reference rule's extra approval requirement for unattributed changes where GitHub exposes it.
 
-This section describes the requested configuration, not proof that protection is enabled. Workspace policy reserves ruleset/protection changes to the owner. A normal PR requirement does not itself restrict master PRs to a nightly head; the nightly-only promotion rule must also be respected when selecting and merging PRs.
+Workspace policy reserves ruleset/protection changes to the owner. A normal PR requirement does not itself restrict master PRs to a nightly head; the nightly-only promotion rule must also be respected when selecting and merging PRs.
 
-The ready-to-apply payload is [branch-protection.json](branch-protection.json). It was compared with NeoPi's live Standard Protection ruleset during setup. No ruleset was present in this repository at that inspection.
-
-From a checkout containing this file, the owner can apply it once:
-
-```sh
-gh api --method POST repos/PsychedelicShayna/nvim-claude/rulesets \
-  --input docs/policy/branch-protection.json
-```
-
-Inspect existing rulesets before applying it again to avoid creating duplicates. This is an owner handoff, not an agent setup command: workspace policy explicitly says, "Rulesets and branch protection are repository settings; agents do not change them."
+[branch-protection.json](branch-protection.json) retains the setup payload for audit. It is not a pending handoff or an instruction to POST another ruleset.
