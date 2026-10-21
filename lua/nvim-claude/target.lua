@@ -120,15 +120,23 @@ function M.capture_visual(operation)
   if mode ~= "v" and mode ~= "V" and mode ~= "\22" then
     return nil, "A Visual selection is required"
   end
-  local region, rows = visual_region(buf, mode)
+  local region, rows, anchor, cursor = visual_region(buf, mode)
   if #rows == 0 then
     return nil, "The Visual selection is empty"
   end
 
   if mode == "\22" then
-    local block_start, block_end = region[1][1], region[1][2]
-    local left = vim.fn.virtcol({ block_start[2], block_start[3], block_start[4] }) - 1
-    local right = vim.fn.virtcol({ block_end[2], block_end[3], block_end[4] })
+    local anchor_virtual = vim.fn.virtcol({ anchor[1] + 1, anchor[2] + 1, anchor[3] })
+    local cursor_virtual = vim.fn.virtcol({ cursor[1] + 1, cursor[2] + 1, cursor[3] })
+    local left = math.min(anchor_virtual, cursor_virtual) - 1
+    local right = math.max(anchor_virtual, cursor_virtual)
+    if vim.o.selection == "exclusive" then
+      if cursor_virtual >= anchor_virtual then
+        right = math.max(left, right - 1)
+      else
+        left = math.min(right, left + 1)
+      end
+    end
     local segments = {}
     local tabstop = vim.bo[buf].tabstop
     for index, row in ipairs(rows) do

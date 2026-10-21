@@ -93,13 +93,82 @@ vim.cmd("let &undolevels=&undolevels")
 vim.cmd("normal! gg3|\022j2l")
 local block = assert(target.capture_visual("replace"))
 local block_targets = assert(target.request_targets(block))
-equal({ block_targets[1].text, block_targets[2].text }, { "    ", "    " }, "partial-tab block target")
+equal({ block_targets[1].text, block_targets[2].text }, { "   ", "   " }, "partial-tab block target")
 local block_result = assert(target.apply(block, {
   { id = "target-0", text = "A" }, { id = "target-1", text = "B" },
 }))
-equal(vim.api.nvim_buf_get_lines(buf, 0, -1, false), { "  A  X", "  B  Y" }, "partial-tab preservation")
+equal(vim.api.nvim_buf_get_lines(buf, 0, -1, false), { "  A   X", "  B   Y" }, "partial-tab preservation")
 target.clear(block_result)
 vim.cmd("undo")
 equal(vim.api.nvim_buf_get_lines(buf, 0, -1, false), { "\tX", "\tY" }, "blockwise one-step undo")
+
+normal_mode()
+vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "a界b" })
+vim.api.nvim_win_set_cursor(0, { 1, 1 })
+vim.cmd("normal! \022")
+local wide = assert(target.capture_visual("replace"))
+equal(assert(target.request_targets(wide))[1].text, "界", "wide-character block target")
+local wide_result = assert(target.apply(wide, { { id = "target-0", text = "X" } }))
+equal(vim.api.nvim_buf_get_lines(buf, 0, -1, false), { "aXb" }, "wide-character block replacement")
+target.clear(wide_result)
+
+normal_mode()
+vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "a", "abcdef" })
+vim.cmd("normal! 2G3|\022k1l")
+local short = assert(target.capture_visual("replace"))
+local short_targets = assert(target.request_targets(short))
+equal(short_targets[1].text, "  ", "short-line virtual block target")
+local short_result = assert(target.apply(short, {
+  { id = "target-0", text = "X" }, { id = "target-1", text = "Y" },
+}))
+equal(vim.api.nvim_buf_get_lines(buf, 0, -1, false), { "a X", "abYef" }, "short-line virtual block replacement")
+target.clear(short_result)
+
+normal_mode()
+vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "abc" })
+vim.api.nvim_win_set_cursor(0, { 1, 1 })
+local insertion = target.capture_insert("n")
+local other = vim.api.nvim_create_buf(false, true)
+vim.api.nvim_set_current_buf(other)
+local inserted = assert(target.apply(insertion, { { id = "target-0", text = "X" } }))
+equal(vim.api.nvim_buf_get_lines(buf, 0, -1, false), { "aXbc" }, "insertion after focus change")
+target.clear(inserted)
+vim.api.nvim_set_current_buf(buf)
+
+normal_mode()
+vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "alpha beta omega" })
+vim.api.nvim_win_set_cursor(0, { 1, 6 })
+vim.cmd("normal! v3l")
+local first_replace = assert(target.capture_visual("replace"))
+local remembered = assert(target.apply(first_replace, { { id = "target-0", text = "BETA" } }))
+target.dim(remembered)
+target.remember_replace(remembered)
+vim.api.nvim_buf_set_text(buf, 0, 0, 0, 0, { "prefix " })
+local followup = assert(target.previous_replace(buf))
+equal(assert(target.request_targets(followup))[1].text, "BETA", "remembered replacement target")
+
+local context = require("nvim-claude.context")
+local context_config = {
+  context_limit_tokens = 100000,
+  runtime_overhead_tokens = 1000,
+  output_reserve_tokens = 1000,
+}
+local filler = {}
+for index = 1, 40 do filler[index] = ("unchanged context line %03d"):format(index) end
+vim.api.nvim_buf_set_lines(buf, -1, -1, false, filler)
+local first_context, baseline = context.build(buf, followup, "refine", context_config, "system")
+equal(first_context.kind, "snapshot", "initial context snapshot")
+context.confirm(buf, baseline)
+equal((context.build(buf, followup, "refine", context_config, "system")).kind, "unchanged", "unchanged context marker")
+vim.api.nvim_buf_set_text(buf, 0, 0, 0, 0, { "outside " })
+equal((context.build(buf, followup, "refine", context_config, "system")).kind, "diff", "append-only context diff")
+target.clear(followup)
+
+local util = require("nvim-claude.util")
+equal(
+  util.normalize("café — “yes”…", "replace", config.defaults.punctuation_map),
+  "café - \"yes\"...",
+  "explicit punctuation normalization"
+)
 
 print("Lua behavior checks passed")
