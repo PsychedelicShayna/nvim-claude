@@ -53,8 +53,9 @@ local function float(lines, label, focus, origin, width)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].bufhidden = 'wipe'
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  width = math.max(26, math.min(width or 66, vim.o.columns - 4))
-  local height = math.max(1, math.min(#lines, math.max(3, math.floor(vim.o.lines / 3))))
+  width = math.max(1, math.min(width or 66, vim.o.columns - 4))
+  local height = math.max(1, math.min(#lines, math.max(1, math.floor(vim.o.lines / 3))))
+  origin = vim.api.nvim_win_is_valid(origin) and origin or vim.api.nvim_get_current_win()
   local row, col = position(width, height, origin)
   local win = vim.api.nvim_open_win(buf, focus, {
     relative = 'editor', row = row, col = col, width = width, height = height,
@@ -278,15 +279,19 @@ local function info()
   invoke('state', {}, function(state)
     local cfg = state.config
     local lines = {
-      'Model: ' .. cfg.model .. ' · effort ' .. tostring(cfg.effort),
-      'Local budget: ' .. tostring(cfg.context_limit_tokens or 'model default'),
+      'Model: ' .. cfg.model .. ' · resolved: ' .. tostring(state.resolved_model or 'not reported') ..
+        ' · effort ' .. tostring(cfg.effort) .. ' (' .. (type(state.effort_support) == 'table'
+          and table.concat(state.effort_support, ', ') or tostring(state.effort_support)) .. ')',
+      'Local budget: ' .. tostring(cfg.context_limit_tokens or 'model default') ..
+        ' · effective: ' .. tostring(state.effective_budget or 'unknown'),
       'Budget status: ' .. state.budget,
       'Context occupancy: ' .. tostring(state.occupancy and state.occupancy.totalTokens or 'not measured'),
       'Cumulative usage: ' .. vim.inspect(state.usage),
       'Saved: ' .. tostring(state.saved) .. ' · sticky: ' .. tostring(state.sticky),
       'SDK: ' .. tostring(state.sdk) .. ' · CLI: ' .. tostring(state.runtime.claude_code_version or 'not connected'),
       'Cache: ' .. state.cache,
-      'Authentication/billing: runtime-managed; not verified by this plugin',
+      'Runtime account: ' .. tostring(state.runtime.apiProvider or 'unknown') .. ' / ' ..
+        tostring(state.runtime.subscriptionType or 'unknown') .. ' (billing not independently verified)',
     }
     display(table.concat(lines, '\n'), 'info', vim.api.nvim_get_current_win())
   end)

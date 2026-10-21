@@ -75,8 +75,10 @@ local function block_span(line, left, right)
 end
 
 function M.selection(buf)
-  local first, last = vim.fn.getpos("'<"), vim.fn.getpos("'>")
-  local kind = vim.fn.visualmode()
+  local active = vim.fn.mode():match('^[vV\22]') ~= nil
+  local first, last = active and vim.fn.getpos('v') or vim.fn.getpos("'<"),
+    active and vim.fn.getpos('.') or vim.fn.getpos("'>")
+  local kind = active and vim.fn.mode():sub(1, 1) or vim.fn.visualmode()
   local options = { type = kind, exclusive = vim.o.selection == 'exclusive' }
   local ok, regions = pcall(vim.fn.getregionpos, first, last, options)
   if not ok or #regions == 0 then return nil, 'No visual selection to capture' end
@@ -90,7 +92,7 @@ function M.selection(buf)
   local block = kind == '\22'
   local left, right
   if block then
-    left, right = vim.fn.virtcol("'<"), vim.fn.virtcol("'>")
+    left, right = vim.fn.virtcol(active and 'v' or "'<"), vim.fn.virtcol(active and '.' or "'>")
     if left > right then left, right = right, left end
   end
   for index, pair in ipairs(regions) do
