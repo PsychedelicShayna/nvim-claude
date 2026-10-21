@@ -106,10 +106,13 @@ end
 
 local function mkdir(path)
   local ok, err = pcall(vim.fn.mkdir, path, "p")
-  if not ok or vim.fn.isdirectory(path) ~= 1 then
-    return nil, tostring(err or ("could not create " .. path))
+  if vim.fn.isdirectory(path) == 1 then
+    return true
   end
-  return true
+  if not ok then
+    return nil, tostring(err)
+  end
+  return nil, "could not create " .. path
 end
 
 local function write_file(path, contents, mode)
