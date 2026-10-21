@@ -1,5 +1,12 @@
 # nvim-claude
 
+> [!IMPORTANT]
+> Round 1 metadata-only post-run correction. This candidate ran with GPT-6 Astra, `openai-codex/gpt-6-astra`, at **high** effort in NeoPi.
+> Original branch: `experimental/benchmark-astra-6-neopi-20261021T135334822264899Z`.
+> Original delivered commit: [`5f1242e9b8e23ef0b875444b58030f00513cb644`](https://github.com/PsychedelicShayna/nvim-claude/commit/5f1242e9b8e23ef0b875444b58030f00513cb644).
+> Corrected installable branch: [`experimental/round-1-astra-6-high-neopi-20261021T135334822264899Z`](https://github.com/PsychedelicShayna/nvim-claude/tree/experimental/round-1-astra-6-high-neopi-20261021T135334822264899Z).
+> The branch rename and this README-only commit correct attribution after delivery. They do not change the implementation, rerun the benchmark, or rewrite the historical run record.
+
 Cursor-local collaboration with Claude in Neovim. Select text to replace it, generate at a captured insertion point, or ask a question in a separate float. Lua owns edits; the official Python Claude Agent SDK supplies responses. Claude has no tools.
 
 This is the independent Astra 6 / NeoPi benchmark candidate. It is not merged into nightly or master. The shared behavior contract remains in [SPEC.md](SPEC.md); observed results and limitations are in [the run record](docs/agents/benchmark-result.md).
@@ -11,7 +18,7 @@ Requires Neovim 0.11 or newer, Python 3.10 or newer with `venv` and pip, and HTT
 ```lua
 {
   "PsychedelicShayna/nvim-claude",
-  branch = "experimental/benchmark-astra-6-neopi-20261021T135334822264899Z",
+  branch = "experimental/round-1-astra-6-high-neopi-20261021T135334822264899Z",
   main = "nvim-claude",
   opts = {},
 }
