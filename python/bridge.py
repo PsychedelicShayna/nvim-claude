@@ -5,7 +5,6 @@ import importlib.metadata
 import json
 import os
 from pathlib import Path
-import signal
 import sys
 import time
 
@@ -61,6 +60,8 @@ class Bridge:
         self.sticky = False
         self.cancelled = False
         self.busy = False
+        self.idle = asyncio.Event()
+        self.idle.set()
         self.queue = asyncio.Queue()
         self.current_id = None
         self.epoch = 0
@@ -122,8 +123,9 @@ class Bridge:
     def info(self):
         r = self.record
         age = time.time() - r['last_request'] if r['last_request'] else None
-        return {'conversation': r['id'], 'config': self.config, 'retention': 'saved' if r['persistent'] else 'ephemeral', 'sticky': self.sticky,
-                'occupancy': r['occupancy'], 'cumulative_usage': r['usage'], 'versions': self.versions,
+        return {'conversation': r['id'], 'config': {**self.config, 'resolved_model': r.get('resolved_model') or self.config['model']}, 'retention': 'saved' if r['persistent'] else 'ephemeral', 'sticky': self.sticky,
+                'occupancy': r['occupancy'], 'model_capacity_tokens': r.get('model_capacity_tokens'), 'cumulative_usage': r['usage'], 'versions': self.versions,
+                'usage_provenance': 'SDK cumulative result counters, including compaction; interrupted/error turns may be incomplete',
                 'budget': {'policy': 'conservative UTF-8 byte upper bound plus runtime allowance; fail closed on unknown context', 'history_byte_bound': r['bound'], 'runtime_allowance_tokens': OVERHEAD, 'output_reserve_tokens': OUTPUT_RESERVE, 'requested_ceiling': self.config.get('context_limit_tokens'), 'verified_runtime': '2.1.306', 'native_compaction_is_not_a_ceiling': True},
                 'cache': {'ttl_seconds': self.last_cache_ttl or self.ttl, 'remaining_seconds': max(0, (self.last_cache_ttl or self.ttl) - age) if age is not None else None, 'provenance': 'observed cache-creation TTL; expiry estimated' if self.last_cache_ttl else 'estimated from runtime account mode; no heartbeat'},
                 'authentication': {'mode': self.config.get('auth_mode'), 'runtime_subscription_available': bool(self.metadata.get('account', {}).get('subscriptionType'))}}
@@ -170,6 +172,7 @@ class Bridge:
                     if any(type(block).__name__ in ('ToolUseBlock', 'ToolResultBlock') for block in message.content):
                         raise ValueError('Runtime violated no-tools contract')
                 final.extend(block.text for block in message.content if isinstance(block, TextBlock))
+                self.record['resolved_model'] = message.model
             elif isinstance(message, SystemMessage):
                 if message.subtype == 'init':
                     if message.data.get('tools') or message.data.get('mcp_servers'):
@@ -188,8 +191,20 @@ class Bridge:
         if self.cancelled:
             raise ValueError('Request cancelled; no edit applied')
         usage = result.usage or {}
-        for key in ('input_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens', 'output_tokens'):
-            self.record['usage'][key] = self.record['usage'].get(key, 0) + usage.get(key, 0)
+        if result.model_usage:
+            fields = {'inputTokens': 'input_tokens', 'cacheReadInputTokens': 'cache_read_input_tokens', 'cacheCreationInputTokens': 'cache_creation_input_tokens', 'outputTokens': 'output_tokens'}
+            for model, totals in result.model_usage.items():
+                previous = self.record.get('model_usage_totals', {}).get(model, {})
+                for source, destination in fields.items():
+                    delta = max(0, totals.get(source, 0) - previous.get(source, 0))
+                    self.record['usage'][destination] = self.record['usage'].get(destination, 0) + delta
+                if model == self.record.get('resolved_model'):
+                    self.record['model_capacity_tokens'] = totals.get('contextWindow')
+            self.record['model_usage_totals'] = result.model_usage
+        else:
+            self.record['usage']['partial_accounting'] = True
+            for key in ('input_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens', 'output_tokens'):
+                self.record['usage'][key] = self.record['usage'].get(key, 0) + usage.get(key, 0)
         cache = usage.get('cache_creation', {})
         if cache.get('ephemeral_1h_input_tokens'):
             self.last_cache_ttl = 3600
@@ -313,6 +328,9 @@ class Bridge:
             candidate = parse_expression(params['expression'], self.config, self.metadata.get('models', [])) if params.get('expression') else {**self.config, **params}
             validate_config(candidate, self.metadata.get('models', []))
             await self.disconnect()
+            if candidate['model'] != self.config['model']:
+                self.record.pop('resolved_model', None)
+                self.record.pop('model_capacity_tokens', None)
             self.config = candidate
             self.record['config'] = dict(candidate)
             self.record['baselines'] = {}
@@ -368,6 +386,8 @@ class Bridge:
                             await asyncio.wait_for(self.client.interrupt(), timeout=10)
                         except Exception:
                             pass
+                    if self.busy:
+                        await self.idle.wait()
                     send({'jsonrpc': '2.0', 'id': ident, 'result': {'cancelled': True}})
                 elif self.busy and method == 'turn':
                     send({'jsonrpc': '2.0', 'id': ident, 'error': {'code': -32001, 'message': 'Conversation busy; draft retained'}})
@@ -392,6 +412,7 @@ class Bridge:
                 self.epoch = params.get('epoch', 0)
                 self.cancelled = False
                 self.busy = True
+                self.idle.clear()
                 try:
                     result = await self.dispatch(message['method'], params)
                     send({'jsonrpc': '2.0', 'id': self.current_id, 'result': result})
@@ -399,6 +420,7 @@ class Bridge:
                     send({'jsonrpc': '2.0', 'id': self.current_id, 'error': {'code': -32000, 'message': str(error)}})
                 finally:
                     self.busy = False
+                    self.idle.set()
         finally:
             await self.disconnect()
             self.store.write(self.record)

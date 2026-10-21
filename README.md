@@ -105,6 +105,8 @@ opts = {
 
 One active conversation and one turn at a time. A second submission retains its draft instead of interleaving histories. New/clear/resume cancel the old request before changing state.
 
+Cancellation is acknowledged after the active turn drains, so the next submission cannot race the interrupted SDK turn.
+
 Unsaved conversations expire on the next invocation after the estimated prefix-reuse interval. The default estimate is one hour for runtime-announced subscription usage, five minutes for API/cloud usage. Observed cache-creation TTL refines the estimate. Streaming consumes part of that interval. There are no heartbeat model requests. Saved conversations do not expire.
 
 Runtime data lives in `stdpath("data")/nvim-claude`; manifests live in `stdpath("state")/nvim-claude/conversations`. SDK transcripts use the runtime's ordinary storage. Exact plugin-owned UUIDs and per-conversation locks distinguish live editors, saved conversations, and abandoned unsaved records. Cleanup deletes only unsaved records created by this plugin. It does not promise erasure of provider retention, caches, diagnostics, or unrelated Claude sessions.
@@ -135,6 +137,8 @@ The default is Haiku 5.5, reasoning disabled, effort low, and a 100,000-token pr
 This conservative policy can reject text that a tokenizer would fit. It does not raise your limit. Large source buffers use an explicitly marked excerpt around intact targets when necessary; a mandatory instruction/target that still cannot fit is refused. General asks and whole-file selections are not silently truncated. After compaction, delivery uncertainty, or reconfiguration, the next document context is a fresh snapshot/excerpt. Confirmed exact revisions otherwise use append-only diffs or explicit unchanged markers.
 
 The allowance and no-tools accounting were exercised against bundled CLI **2.1.306**. A different runtime version fails closed for model dispatch until its budget behavior is validated in the plugin; provisioning still installs the latest SDK as requested. `info` distinguishes conservative bounds, measured occupancy, cumulative billed usage, and cache estimates. The implementation does not claim a provider-side arbitrary-token-limit API or a guarantee against runtime behavior outside this validated configuration. See the [run record](docs/agents/benchmark-result.md) for boundary evidence and limitations.
+
+`model_capacity_tokens` reports the model window announced in SDK results, separately from the runtime's effective auto-compaction window in `occupancy`. Cumulative token counters include native compaction and are differenced across exact-session reconnects rather than counted twice. Interrupted/error turns may lack complete runtime usage data; these are SDK usage figures, not a subscription invoice.
 
 ## Output and system prompt
 
