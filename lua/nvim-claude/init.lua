@@ -192,7 +192,7 @@ local function change_context(method, params)
   call(method, params, function(result, err)
     if not err then
       if result.config then opts.model_config = result.config end
-      message(vim.inspect(result))
+      message(method .. ' complete')
     end
   end)
 end
@@ -244,7 +244,9 @@ function M.command(args)
     end)
   elseif action == 'sticky' then
     if sub and sub ~= 'on' and sub ~= 'off' then message('Use sticky on or off'); return end
-    call('sticky', sub and { enabled = sub == 'on' } or {}, function(result, err) if not err then message(vim.inspect(result)) end end)
+    call('sticky', sub and { enabled = sub == 'on' } or {}, function(result, err)
+      if not err then message('Sticky persistence ' .. (result.sticky and 'on' or 'off')) end
+    end)
   elseif action == 'system' then
     if sub == 'modify' then system_modify()
     elseif sub == 'default' then
@@ -270,7 +272,9 @@ function M.command(args)
     if result then show(result.title, result.text, result.origin) else message('No result yet') end
   elseif action == 'save' or action == 'compact' then
     if state.busy then message('Conversation is busy'); return end
-    call(action, {}, function(result, err) if not err then message(vim.inspect(result)) end end)
+    call(action, {}, function(result, err)
+      if not err then message(action == 'save' and ('Saved ' .. result.saved) or 'Context compacted; summary is lossy') end
+    end)
   else message('Unknown command: ' .. action) end
 end
 

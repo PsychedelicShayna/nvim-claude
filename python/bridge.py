@@ -349,14 +349,14 @@ class Bridge:
             if not record or not record['saved']:
                 raise ValueError('Saved conversation not found')
             if identity == self.record['id']:
-                return {'resumed': identity}
+                return {'resumed': identity, 'config': self.config}
             if not self.store.claim(identity):
                 raise ValueError('Conversation is open in another live Neovim')
             await self.detach()
             self.record = record
             self.config = dict(record['config'])
             self.baselines = {}
-            return {'resumed': identity, 'epoch': self.epoch}
+            return {'resumed': identity, 'epoch': self.epoch, 'config': self.config}
         if method == 'compact':
             return await self.compact()
         raise ValueError('Unknown method: ' + method)
