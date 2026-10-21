@@ -208,6 +208,8 @@ class Bridge:
                    CLAUDE_CODE_DISABLE_ATTACHMENTS="1", CLAUDE_CODE_DISABLE_CRON="1",
                    CLAUDE_CODE_SAFE_MODE="1", DISABLE_AUTO_COMPACT="1",
                    CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK="1",
+                   DISABLE_DOCTOR_COMMAND="1",
+                   CLAUDE_CODE_PLUGIN_DIRS="", CLAUDE_CODE_EXTRA_BODY="",
                    CLAUDE_CODE_MAX_OUTPUT_TOKENS=str(OUTPUT), CLAUDE_CODE_EFFORT_LEVEL=self.config.get("effort") or "low",
                    CLAUDE_CODE_AUTO_COMPACT_WINDOW=str(max(100000, self.config.get("context_limit_tokens") or 1000000)))
         # Never inherit an API key as a silent subscription fallback.
@@ -215,12 +217,13 @@ class Bridge:
             raise ValueError("ANTHROPIC_API_KEY is set and overrides subscription billing. Unset it to use runtime login; the plugin does not silently opt into API billing.")
         options = ClaudeAgentOptions(
             model=self.config["model"], effort=self.config.get("effort"), thinking={"type":"disabled"},
-            tools=[], mcp_servers={}, strict_mcp_config=True, setting_sources=[], agents={}, plugins=[],
+            tools=[], mcp_servers={}, strict_mcp_config=True, setting_sources=[], agents={}, plugins=[], skills=[],
             system_prompt={"type":"custom", "prompt":self.prompt, "snapshot":False},
             resume=record["sdk_id"] if record["transcript"] else None,
             session_id=None if record["transcript"] else record["sdk_id"],
             cwd=record["cwd"], env=env, max_turns=1, include_partial_messages=True,
-            settings=encoded({"disableAllHooks":True, "autoMemoryEnabled":False, "idleCompaction":False}),
+            settings=encoded({"disableAllHooks":True, "autoMemoryEnabled":False, "idleCompaction":False,
+                              "enabledPlugins":{"cc-plugin-agents-md@builtin":False,"cc-plugin-plugin-authoring@builtin":False}}),
             stderr=lambda text: print(text, file=sys.stderr))
         self.client = ClaudeSDKClient(options)
         try:
@@ -250,13 +253,17 @@ class Bridge:
         if parts < (2,1,306):
             raise ValueError("Runtime 2.1.306+ is required for verified verbatim input and context isolation. Run :NvClaude update.")
 
+    def require_safe_budget(self):
+        if self.config.get("context_limit_tokens") is not None:
+            raise ValueError("Unsupported hard input budget: this SDK/runtime provides estimates but no authoritative final-request count or arbitrary hard input limit. No model request was sent. Keep the cap to refuse requests, or explicitly choose 'model default' in :NvClaude model to proceed without a local pricing ceiling.")
+
     def info(self):
         record = self.store.record or {}
         context = {k:v for k,v in self.context.items() if k not in ("gridRows", "memoryFiles")}
         return dict(config=self.config, versions=self.versions, conversation=record.get("id"),
                     sdk_session=record.get("sdk_id"), saved=record.get("saved",False), sticky=self.sticky,
                     occupancy=context, cumulative=record.get("cumulative",{}),
-                    budget={"policy":"conservative UTF-8-byte upper bound for supplied text plus 16,384 runtime/framing tokens; 8,192 output reservation", "ceiling":self.config.get("context_limit_tokens"), "runtime_overhead_allowance":OVERHEAD, "provider_verified_hard_ceiling":False},
+                    budget={"policy":"hard local input ceilings are unsupported and refused before dispatch; model default uses conservative physical-window planning", "ceiling":self.config.get("context_limit_tokens"), "runtime_overhead_allowance":OVERHEAD, "provider_verified_hard_ceiling":False},
                     cache={"ttl_seconds":self.cache_ttl, "provenance":self.cache_provenance,
                            "remaining_seconds":max(0, self.cache_ttl - (time.time()-record.get("last",0)))},
                     authentication={"subscription_type":self.metadata.get("account",{}).get("subscriptionType"),
@@ -309,9 +316,9 @@ class Bridge:
         compact_boundary = False
         async for event in self.client.receive_response():
             if isinstance(event, SystemMessage):
-                if event.subtype == "init" and (event.data.get("tools") or event.data.get("mcp_servers")):
+                if event.subtype == "init" and any(event.data.get(k) for k in ("tools","mcp_servers","agents","skills")):
                     await self.client.interrupt()
-                    raise ValueError("Runtime announced tools despite tools=[]; no edit applied")
+                    raise ValueError("Runtime announced tools/agents/skills despite isolation; no edit applied: " + encoded({k:event.data.get(k) for k in ("tools","mcp_servers","agents","skills")}))
                 if event.subtype == "compact_boundary":
                     compact_boundary = True
             elif isinstance(event, StreamEvent):
@@ -349,9 +356,9 @@ class Bridge:
         await self.connect()
         if not self.store.record["transcript"]:
             raise ValueError("There is no completed context to compact")
-        limit = self.config.get("context_limit_tokens")
-        if limit and self.prompt_bound("/compact") + OUTPUT > limit:
-            raise ValueError("Compaction would exceed the conservative budget. Start a new conversation or choose a larger budget explicitly.")
+        self.require_safe_budget()
+        if self.prompt_bound("/compact") + OUTPUT > self.context.get("rawMaxTokens",0):
+            raise ValueError("Compaction would exceed physical context planning. Start a new conversation.")
         _, boundary = await self.consume("/compact", compact=True)
         self.baselines.clear()
         if not boundary:
@@ -369,14 +376,14 @@ class Bridge:
             await self.disconnect()
             self.store.release()
         await self.connect()
+        self.require_safe_budget()
         record = self.store.record
         req = self.envelope(p)
         payload = encoded(req)
-        limit = self.config.get("context_limit_tokens")
         physical = self.context.get("rawMaxTokens",0)
         if not physical:
             raise ValueError("Unsupported budget: runtime did not report its physical context window")
-        ceiling = min(limit or physical-OUTPUT, physical-OUTPUT)
+        ceiling = physical-OUTPUT
         bound = self.prompt_bound(payload)
         # Compact before the next request, while the compact turn still fits.
         if record["transcript"] and bound > ceiling * 0.75:
@@ -406,7 +413,8 @@ class Bridge:
         except BaseException:
             self.baselines.clear()
             # Resume the actual SDK history after an uncertain/canceled turn.
-            record["transcript"].append({"uncertain_turn":payload})
+            record["transcript"].append({"uncertain_turn":payload,"context_tokens":len(payload.encode())+OUTPUT})
+            record["last"] = started
             self.store.write()
             await self.disconnect()
             raise

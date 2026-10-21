@@ -6,6 +6,8 @@ This is the **Sol 6.1 medium / NeoPi benchmark candidate**, not the selected sta
 
 ## Install
 
+The default requested 100k hard ceiling **fails closed before model dispatch** on the inspected runtime. To exercise model-backed editing, explicitly select a model and effort in `:NvClaude model`, then choose **model default** for its budget. That removes the local pricing ceiling; it is not a silent fallback. This candidate does not pass the spec's strict-budget acceptance requirement.
+
 Verified with Neovim 0.12.4, Python 3.14.6, Claude Agent SDK 0.2.170 and bundled Claude Code 2.1.306 on Linux. The client uses Neovim 0.10+ APIs and requires Python 3.10+, pip/venv support, and `flock`. Older Neovim/Python versions have not been exercised. There is no dependency on a private configuration, `inf`, a developer checkout, or a separately installed Claude Code.
 
 ```lua
@@ -88,9 +90,9 @@ The final recognized effort suffix is separate from the runtime model. Decimal `
 
 Presets are 50k, 90k, 100k, 124k, 150k, 164k, 200k, 224k, 256k, 258k, 274k, 278k, 300k, 374k, 378k, 384k, 412k, 456k, 500k, 512k, 600k, 650k, 700k, 750k, 800k, 850k, 900k, 950k and 980k, plus model default. A local budget cannot enlarge physical context.
 
-The bridge uses a conservative UTF-8 byte bound for supplied text/history, reported output tokens, 256 framing tokens per historical entry, and a 16,384-token runtime allowance. It also reserves 8,192 output tokens against the physical window. It refuses oversize mandatory targets/instructions before dispatch. Local tasks can use an explicitly marked excerpt around an intact target; whole-file tasks are not silently truncated. Long histories trigger actual runtime `/compact` before the next request, and compaction itself must fit. A compaction boundary invalidates all buffer baselines.
+With model default explicitly selected, the bridge plans physical context conservatively using UTF-8 bytes for supplied text/history, reported output tokens, 256 framing tokens per historical entry, a 16,384-token runtime allowance and an 8,192-token output reservation. It refuses oversized mandatory targets/instructions. Local tasks can use a marked excerpt around an intact target; whole-file tasks are not silently truncated. Long histories trigger actual runtime `/compact` before the next request, and compaction itself must fit. A compaction boundary invalidates all buffer baselines.
 
-**This is not a provider-verified hard pricing ceiling.** The SDK exposes context accounting, but not an authoritative pre-dispatch count of the final provider request or a provider-enforced arbitrary input ceiling. `info` labels that limitation. The 100k guard has an explicit runtime-overhead assumption; do not rely on it as a billing guarantee. Ordinary Haiku edits and local refusal boundaries are exercised. A strict provider-side 100k guarantee remains an upstream limitation against the shared spec, not a passing claim. The SDK is asked to disable thinking; current runtime metadata says Haiku 5.5 does not support thinking-off, so that setting cannot be promised effective for every turn.
+**Hard local input ceilings are unsupported and refused before dispatch**, including the default 100k request and all numeric presets. The SDK exposes context accounting, but not an authoritative pre-dispatch count of the final provider request or an arbitrary hard input limit. A conservative allowance cannot prove that runtime-added content stays inside a pricing boundary, so the plugin does not send capped requests under a false guarantee. `info` states this limitation. Real Haiku edits, saved history and compaction were exercised; the strict 100k requirement is not implemented. The SDK is asked to disable thinking; current runtime metadata says Haiku 5.5 does not support thinking-off, so that setting cannot be promised effective for every turn.
 
 ## Context and retention
 
@@ -108,6 +110,6 @@ Saved conversations survive expiry and Neovim restarts. Sticky-on saves the curr
 
 ## Implementation
 
-Lua owns targets, undo, floats and mappings. One lazy Python process owns the SDK conversation and exchanges Content-Length-framed JSON-RPC over stdio. There is no listening server or browser endpoint. The runtime receives `tools=[]`, empty strict MCP configuration, no settings sources, empty agents/plugins, disabled hooks/memory/IDE attachments, safe mode, and per-message verbatim user input. It checks reported context for unexpected tools, memory or agents. Runtime initialization has been observed announcing no tools, MCP servers, agents or skills. Managed policy still belongs to the installed runtime.
+Lua owns targets, undo, floats and mappings. One lazy Python process owns the SDK conversation and exchanges Content-Length-framed JSON-RPC over stdio. There is no listening server or browser endpoint. The runtime receives `tools=[]`, empty strict MCP configuration, no settings sources, empty agents/plugins/skills, disabled hooks/memory/IDE attachments, safe mode, and per-message verbatim user input. The runtime's built-in doctor and plugin-authoring skills need explicit disabling as well. The bridge checks reported context and initialization for unexpected tools, memory, agents or skills and refuses the result if isolation is violated. Runtime initialization has been observed announcing no tools, MCP servers, agents or skills. Managed policy still belongs to the installed runtime.
 
 See [CHANGELOG.md](CHANGELOG.md), [SPEC.md](SPEC.md), and the [benchmark record](docs/agents/benchmark-result.md). License: [GPL-3.0](LICENSE).
