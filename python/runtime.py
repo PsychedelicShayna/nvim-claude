@@ -34,6 +34,7 @@ class Runtime:
         self.mapping = None
         self.cancelled = False
         self.billing = 'unknown'
+        self.auth = 'runtime'
         self.ttl = 300
         self.versions = {'python': platform.python_version(), 'sdk': importlib.metadata.version('claude-agent-sdk'), 'cli': subprocess.check_output([str(CLI), '--version'], text=True).strip()}
         self.record = self.store.create(dict(self.config))
@@ -45,9 +46,13 @@ class Runtime:
             await client.disconnect()
 
     async def close(self):
-        await self.disconnect()
-        self.store.release()
-        self.gate.close()
+        try:
+            await self.disconnect()
+        finally:
+            try:
+                self.store.release()
+            finally:
+                self.gate.close()
 
     async def connect(self):
         if self.client:
@@ -60,8 +65,12 @@ class Runtime:
 
     async def _connect(self):
         # Never silently turn an inherited paid key into the personal default.
-        if os.getenv('ANTHROPIC_API_KEY') or os.getenv('ANTHROPIC_AUTH_TOKEN') or os.getenv('ANTHROPIC_BASE_URL') or any(os.getenv(k) for k in ('CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY')):
-            raise ValueError('API key or custom provider routing detected. Remove it to use the official runtime login; this plugin never silently changes billing or routing.')
+        if os.getenv('ANTHROPIC_AUTH_TOKEN') or os.getenv('ANTHROPIC_BASE_URL') or any(os.getenv(k) for k in ('CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY')):
+            raise ValueError('Custom provider routing is unsupported by the first-party budget gate. No request was sent.')
+        if self.auth == 'runtime' and os.getenv('ANTHROPIC_API_KEY'):
+            raise ValueError('ANTHROPIC_API_KEY would override subscription login. Remove it or explicitly configure auth=\"api\" to authorize API billing.')
+        if self.auth == 'api' and not os.getenv('ANTHROPIC_API_KEY'):
+            raise ValueError('auth=\"api\" requires ANTHROPIC_API_KEY; no subscription fallback is used')
         env = {
             'CLAUDE_CODE_AUTO_CONNECT_IDE': 'false', 'CLAUDE_CODE_DISABLE_AUTO_MEMORY': '1',
             'CLAUDE_CODE_DISABLE_CLAUDE_MDS': '1', 'CLAUDE_CODE_DISABLE_ATTACHMENTS': '1',
@@ -241,10 +250,14 @@ class Runtime:
     async def fresh(self):
         await self.disconnect()
         self.baselines.clear()
+        self.context = {}
         self.record = self.store.create(dict(self.config), self.sticky)
 
     async def command(self, method, params):
         if method == 'initialize':
+            self.auth = params.get('auth', self.auth)
+            if self.auth not in ('runtime', 'api'):
+                raise ValueError('Authentication must be runtime or api')
             self.config.update(params.get('config', {}))
             self.record['config'] = dict(self.config)
             self.mapping = params.get('punctuation')
@@ -272,6 +285,7 @@ class Runtime:
             self.record = self.store.resume(params['id'])
             self.config = dict(self.record['config'])
             self.baselines.clear()
+            self.context = {}
             return {'message': 'Saved conversation resumed', 'config': self.config}
         if method == 'compact':
             return await self.compact(params)
