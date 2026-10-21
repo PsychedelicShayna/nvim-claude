@@ -3,7 +3,7 @@ local a = vim.api
 function M.float(title, text, origin, prompt)
   local b = a.nvim_create_buf(false, true)
   vim.bo[b].bufhidden = 'hide'
-  local width = math.max(10, math.min(prompt and 62 or 88, vim.o.columns - 4))
+  local width = math.max(1, math.min(prompt and 62 or 88, vim.o.columns - 4))
   local height = math.min(prompt and 3 or 14, math.max(1, vim.o.lines - 5))
   local pos = vim.fn.screenpos(0, vim.fn.line('.'), vim.fn.col('.'))
   local row = prompt and math.min(pos.row, vim.o.lines - height - 4) or math.floor((vim.o.lines - height) / 2) - 1
@@ -16,7 +16,6 @@ function M.float(title, text, origin, prompt)
     if a.nvim_buf_is_valid(b) then
       vim.bo[b].modifiable = true
       a.nvim_buf_set_lines(b, 0, -1, false, vim.split(value, '\n', { plain = true }))
-      vim.bo[b].modifiable = prompt or false
     end
   end
   function obj.close()
@@ -32,7 +31,8 @@ function M.float(title, text, origin, prompt)
     a.nvim_create_autocmd({ 'TextChanged', 'TextChangedI' }, { buffer = b, callback = function()
       if a.nvim_win_is_valid(w) then
         local h = math.min(math.max(3, a.nvim_buf_line_count(b)), math.max(1, math.floor(vim.o.lines / 3)))
-        a.nvim_win_set_config(w, { height = h, row = math.min(math.max(0, row), math.max(0, vim.o.lines - h - 4)) })
+        a.nvim_win_set_config(w, { relative = 'editor', height = h, col = math.max(0, col),
+          row = math.min(math.max(0, row), math.max(0, vim.o.lines - h - 4)) })
       end
     end })
   end

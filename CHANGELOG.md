@@ -8,3 +8,4 @@
 - Add runtime-announced model selection, manual expressions, conversation manifests, exact-session cleanup and saved-session resume.
 - Keep raw model history separate from punctuation normalization and buffer context.
 - Refuse numeric hard-budget requests because the inspected runtime has no verified preflight enforcement mechanism. The candidate therefore does not satisfy the specification's ordinary 100k editing acceptance criterion.
+- Fix prompt resizing to retain its floating-window coordinate frame. The attached Neovim UI exercise caught the original callback error; the corrected multiline prompt, Escape behavior and focus restoration passed.
