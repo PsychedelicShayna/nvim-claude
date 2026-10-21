@@ -71,7 +71,7 @@ local function start(callback)
         if line ~= '' then
           diagnostics[#diagnostics + 1] = line
           if #diagnostics > 20 then table.remove(diagnostics, 1) end
-          notify(line)
+          if line:match('^nvim%-claude:') then notify(line) end
         end
       end
     end,

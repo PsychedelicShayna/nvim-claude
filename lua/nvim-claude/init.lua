@@ -198,9 +198,21 @@ function M.command(args)
   elseif command == 'update' then
     if state.busy then notify('Cancel the active request before updating', true); return end
     rpc.stop()
+    local output = ui.result('updating SDK', api.nvim_get_current_win())
+    local lines = {}
     vim.fn.jobstart(rpc.command('--update'), {
-      on_stderr = function(_, data) for _, line in ipairs(data) do if line ~= '' then notify(line) end end end,
-      on_exit = function(_, code) notify(code == 0 and 'SDK updated; next request starts the new runtime' or 'SDK update failed', code ~= 0) end,
+      on_stderr = function(_, data)
+        for _, line in ipairs(data) do
+          if line ~= '' then
+            lines[#lines + 1] = line
+            if #lines > 100 then table.remove(lines, 1) end
+          end
+        end
+        output.set(table.concat(lines, '\n'))
+      end,
+      on_exit = function(_, code)
+        output.title(code == 0 and 'SDK updated' or 'SDK update failed')
+      end,
     })
   elseif command == 'save' or command == 'compact' then request(command)
   else notify('Unknown command: ' .. command, true) end
