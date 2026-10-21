@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from claude_agent_sdk.types import ResultMessage, SystemMessage
 
 SOURCE = Path(__file__).resolve().parents[1] / "python" / "nvim_claude_bridge.py"
 spec = importlib.util.spec_from_file_location("nvim_claude_bridge", SOURCE)
@@ -55,6 +56,40 @@ class BridgeContract(unittest.TestCase):
                     await session.budget(UsageClient(95000), "x" * 40000)
                 with self.assertRaisesRegex(ValueError, "empty conversation"):
                     await session.budget(UsageClient(0), "x" * 85000)
+            asyncio.run(check())
+
+    def test_runtime_compaction_requires_a_real_boundary(self):
+        class Client:
+            def __init__(self, messages):
+                self.messages = messages
+
+            async def query(self, command):
+                assert command == "/compact"
+
+            async def receive_response(self):
+                for message in self.messages:
+                    yield message
+
+        result = ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1,
+                               is_error=False, num_turns=1, session_id="session",
+                               result="Not enough messages to compact.")
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP) as temp:
+            session = bridge.Bridge(Path(temp))
+            session.new_conversation()
+            session.active["baselines"]["buffer"] = {"revision": "1", "text": "original"}
+
+            async def check():
+                failed = Client([SystemMessage("status", {"compact_result": "failed",
+                                                          "compact_error": "Not enough messages to compact."}), result])
+                with self.assertRaisesRegex(ValueError, "Not enough messages"):
+                    await session.compact_runtime(failed)
+                self.assertIn("buffer", session.active["baselines"])
+                succeeded = Client([SystemMessage("compact_boundary", {}),
+                                    ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1,
+                                                  is_error=False, num_turns=1, session_id="session",
+                                                  result="Compacted.")])
+                await session.compact_runtime(succeeded)
+                self.assertEqual(session.active["baselines"], {})
             asyncio.run(check())
 
     def test_large_document_is_marked_incomplete_without_truncating_target(self):

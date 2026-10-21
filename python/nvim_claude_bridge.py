@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import closing
 import difflib
 import fcntl
 import importlib.metadata
@@ -78,26 +79,26 @@ class TranscriptStore:
     def __init__(self, path: Path):
         self.path = path
         path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(path) as db:
+        with closing(sqlite3.connect(path)) as db, db:
             db.execute("CREATE TABLE IF NOT EXISTS lines (session TEXT, project TEXT, ord INTEGER PRIMARY KEY AUTOINCREMENT, payload TEXT)")
             db.execute("CREATE INDEX IF NOT EXISTS lines_session ON lines(session, project)")
 
     async def append(self, key: dict, entries: list[dict]) -> None:
         def work():
-            with sqlite3.connect(self.path) as db:
+            with closing(sqlite3.connect(self.path)) as db, db:
                 db.executemany("INSERT INTO lines(session,project,payload) VALUES(?,?,?)", ((key["session_id"], key["project_key"], json.dumps(e, ensure_ascii=False)) for e in entries))
         await asyncio.to_thread(work)
 
     async def load(self, key: dict) -> list[dict] | None:
         def work():
-            with sqlite3.connect(self.path) as db:
+            with closing(sqlite3.connect(self.path)) as db:
                 return [json.loads(row[0]) for row in db.execute("SELECT payload FROM lines WHERE session=? AND project=? ORDER BY ord", (key["session_id"], key["project_key"]))]
         rows = await asyncio.to_thread(work)
         return rows or None
 
     async def delete(self, key: dict) -> None:
         def work():
-            with sqlite3.connect(self.path) as db:
+            with closing(sqlite3.connect(self.path)) as db, db:
                 db.execute("DELETE FROM lines WHERE session=? AND project=?", (key["session_id"], key["project_key"]))
         await asyncio.to_thread(work)
 
@@ -280,7 +281,7 @@ class Bridge:
                 "usage": conv.get("usage") if conv else {}, "runtime": runtime,
                 "sdk": importlib.metadata.version("claude-agent-sdk"),
                 "cache": f"Estimated prefix TTL: {conv.get('ttl', 300) if conv else 300}s since last completed turn; not proof of a live cache entry.",
-                "budget": "Conservative preflight estimate, not a verified runtime-enforced ceiling",
+                "budget": "Strict request ceiling unsupported by this SDK; conservative preflight estimate only",
                 "cli": str(self.cli) if self.cli.is_file() else None}
 
     async def budget(self, client, payload: str) -> bool:
@@ -316,14 +317,19 @@ class Bridge:
 
     async def compact_runtime(self, client):
         await client.query("/compact")
-        completed, boundary = False, False
+        completed, boundary, failure = False, False, None
         async for message in client.receive_response():
-            if isinstance(message, SystemMessage) and message.subtype == "compact_boundary":
-                boundary = True
+            if isinstance(message, SystemMessage):
+                if message.subtype == "compact_boundary":
+                    boundary = True
+                elif message.subtype == "status" and message.data.get("compact_result") == "failed":
+                    failure = message.data.get("compact_error") or "unknown runtime error"
             elif isinstance(message, ResultMessage):
                 if message.is_error:
-                    raise ValueError(f"Runtime compaction failed: {message.errors or message.result}")
+                    failure = message.errors or message.result or "unknown runtime error"
                 completed = True
+        if failure:
+            raise ValueError(f"Runtime compaction failed: {failure}")
         if not completed or not boundary:
             raise ValueError("Runtime did not announce a completed compaction boundary")
         if self.active:
@@ -389,7 +395,10 @@ class Bridge:
                 text = json.dumps(envelope, ensure_ascii=False)
                 if await self.budget(client, text):
                     raise ValueError("Conversation remains above the requested budget after compaction")
-            await self.event(request_id, epoch, "status", message="continued" if conv.get("session") else "new")
+            session_status = "continued" if conv.get("session") else "new"
+            if self.config.get("context_limit_tokens"):
+                session_status += " · local budget estimated; strict cap unsupported"
+            await self.event(request_id, epoch, "status", message=session_status)
             # client_composed prevents @file expansion and slash-command dispatch in data.
             async def prompt():
                 yield {"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": text}]}, "client_composed": True}
