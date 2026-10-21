@@ -47,6 +47,8 @@ class Bridge:
         self.sticky = False
         self.busy = False
         self.cancelled = False
+        self.pending_request = None
+        self.cancelled_requests = set()
         self.active = None
         self.billing = 'subscription'
         self.ttl = 3600
@@ -387,6 +389,8 @@ class Bridge:
                 self.cancelled = False
                 self.dispatched = False
                 try:
+                    if message['id'] in self.cancelled_requests:
+                        raise RuntimeError('Cancelled before dispatch')
                     value = await self.handle(method, message.get('params') or {})
                     send({'jsonrpc': '2.0', 'id': message['id'], 'result': value})
                 except Exception as error:
@@ -403,6 +407,9 @@ class Bridge:
                 finally:
                     if method == 'request':
                         self.busy = False
+                        if self.pending_request == message['id']:
+                            self.pending_request = None
+                    self.cancelled_requests.discard(message['id'])
                     self.active = None
         finally:
             await self.disconnect()
@@ -428,6 +435,8 @@ class Bridge:
                 method = message.get('method')
                 if method == 'cancel':
                     self.cancelled = True
+                    if self.pending_request is not None:
+                        self.cancelled_requests.add(self.pending_request)
                     if self.client and self.busy:
                         await self.client.interrupt()
                     send({'jsonrpc': '2.0', 'id': message.get('id'), 'result': {'cancelled': True}})
@@ -436,13 +445,18 @@ class Bridge:
                 else:
                     if self.busy and method in ('new', 'clear', 'resume'):
                         self.cancelled = True
+                        if self.pending_request is not None:
+                            self.cancelled_requests.add(self.pending_request)
                         if self.client:
                             await self.client.interrupt()
                     if method == 'request':
                         self.busy = True
+                        self.pending_request = message['id']
                     await self.queue.put(message)
         finally:
             self.cancelled = True
+            if self.pending_request is not None:
+                self.cancelled_requests.add(self.pending_request)
             if self.client and self.busy:
                 await self.client.interrupt()
             await self.queue.put(None)
