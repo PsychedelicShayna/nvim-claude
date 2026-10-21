@@ -79,9 +79,15 @@ The owner chose NeoPi's development conventions, adapted to this smaller reposit
 - Development PRs target nightly. Use merge commits, preserving signed commit provenance; do not squash or rebase.
 - Master receives only promotions from nightly. No direct feature or hotfix PR into master. Promotion is a separate owner decision.
 - No canary batches for this project.
-- Use NeoPi's canonical triage roles alongside its type, priority, effort, and PR-state vocabulary. Detailed skill configuration is being prepared for owner review.
+- Use NeoPi's canonical triage roles alongside its type, priority, effort, and PR-state vocabulary. The owner-approved configuration is in `docs/agents/`; repository-specific workflow is in `docs/policy/README.md`.
 
 This section records the intended workflow, not proof that remote branches or protections already exist. Bootstrap and protection setup must be reported separately from policy documentation.
+
+## Planned implementation comparison
+
+The current assignment establishes the common baseline only. The owner intends to compare complete plugin implementations built independently in separate worktrees, not divide one implementation among agents. Planned candidates include Astra in NeoPi, Astra in Codex CLI, and Sol 6.1; Opus 5.5 is a possible additional candidate. The Astra runs are intended to use extra-high reasoning. This is a plan for later, not authorization to create or launch those runs now.
+
+Assess the specification before calling it a fixed comparison target. Unresolved behavior must either be settled for every run or explicitly left as an implementation choice shared by every run. Do not claim target lock merely because the documents exist.
 
 ## Unresolved design
 
