@@ -85,8 +85,11 @@ class Runtime:
             'CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL': '1',
         }
         persisted = sdk.get_session_info(self.record['sdk_session'], directory=self.record['cwd']) is not None
+        known_model = next((m for m in self.catalogue if self.config['model'] in (m.get('value'), m.get('resolvedModel'))), {})
+        thinking_off = self.config['model'] == 'claude-haiku-5-5' or known_model.get('supportsThinkingOff', False)
         opts = sdk.ClaudeAgentOptions(
-            model=self.config['model'], effort=self.config.get('effort'), thinking={'type': 'disabled'},
+            model=self.config['model'], effort=self.config.get('effort'),
+            thinking={'type': 'disabled'} if thinking_off else None,
             system_prompt={'type': 'custom', 'prompt': self.prompt, 'snapshot': False},
             tools=[], mcp_servers={}, strict_mcp_config=True, setting_sources=[], skills=[], agents={}, plugins=[],
             cwd=self.record['cwd'], env=env, include_partial_messages=True,

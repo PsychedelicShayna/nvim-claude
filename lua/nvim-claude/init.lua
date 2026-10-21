@@ -3,7 +3,7 @@ local api = vim.api
 local bridge = require('nvim-claude.bridge')
 local targets = require('nvim-claude.targets')
 local ui = require('nvim-claude.ui')
-local state = { epoch = 0, serial = 0, mappings = {}, remembered = {}, last_action = nil }
+local state = { epoch = 0, serial = 0, mappings = {}, remembered = {}, prompts = {}, last_action = nil }
 local commands = { 'ask', 'replace', 'generate', 'model', 'new', 'clear', 'save', 'sticky', 'info', 'list', 'resume', 'compact', 'cancel', 'watermarks', 'system', 'login', 'setup', 'update', 'result' }
 local defaults = {
   replace = { '<leader>cc', { 'n', 'x' } }, replace_short = { '<leader>c', { 'n', 'x' } },
@@ -25,14 +25,20 @@ end
 
 function M.cancel()
   state.epoch = state.epoch + 1
+  if not state.active and bridge.state ~= 'ready' then return end
   if state.active then state.active.cancelled = true end
   bridge.request('cancel', {}, response)
 end
 
+local function dispose_unused(target)
+  if target and state.remembered[target.buf] ~= target and not state.prompts[target]
+    and (not state.active or state.active.target ~= target) then targets.dispose(target) end
+end
+
 local function remember(target, action)
   local old = state.remembered[target.buf]
-  if old and old ~= target then targets.dispose(old) end
   state.remembered[target.buf] = target
+  if old ~= target then dispose_unused(old) end
   state.last_action = { action = action, buf = target.buf, target = target }
 end
 
@@ -58,6 +64,14 @@ function M.invoke(operation, visual, previous)
     state.last_action = { action = 'ask', buf = buf }
   end
   local model = configuration().model
+  if target then state.prompts[target] = (state.prompts[target] or 0) + 1 end
+  local function release_prompt()
+    if target then
+      local count = (state.prompts[target] or 1) - 1
+      state.prompts[target] = count > 0 and count or nil
+      dispose_unused(target)
+    end
+  end
   ui.prompt(operation .. ' · ' .. model, origin, function(instruction)
     if state.active then notify('Conversation is busy; your draft is retained'); return false end
     local selected
@@ -77,11 +91,12 @@ function M.invoke(operation, visual, previous)
     local view = ui.result(operation .. ' · preparing', origin)
     view.update('Preparing request…')
     state.result = view
-    local active = { id = request.request, epoch = request.epoch, view = view }
+    local active = { id = request.request, epoch = request.epoch, view = view, target = target }
     state.active = active
     bridge.request('turn', request, function(result, err)
       view.finish()
       if state.active == active then state.active = nil end
+      vim.schedule(function() dispose_unused(target) end)
       if err then view.update('Request failed. No edit applied.\n\n' .. err .. '\n\n' .. (active.partial or '')); view.title(operation .. ' · failed'); return end
       if active.cancelled or state.epoch ~= active.epoch then
         view.update('Cancelled or superseded; no edit applied.\n\n' .. (result.raw or result.text or ''))
@@ -102,8 +117,9 @@ function M.invoke(operation, visual, previous)
         view.title(operation .. ' · result retained')
       end
     end)
+    release_prompt()
     return true
-  end)
+  end, release_prompt)
 end
 
 local function configure(config)
@@ -181,7 +197,18 @@ function M.command(args)
     bridge.request(name, name == 'resume' and { id = words[2] } or {}, response)
   elseif name == 'save' or name == 'compact' then
     if state.active then notify('Wait for the active turn before ' .. name, true); return end
-    bridge.request(name, {}, response)
+    if name == 'save' then bridge.request(name, {}, response); return end
+    state.serial = state.serial + 1
+    local view = ui.result('Claude · compacting', api.nvim_get_current_win())
+    state.result = view
+    local active = { id = state.serial, epoch = state.epoch, view = view }
+    state.active = active
+    bridge.request('compact', { request = active.id, epoch = active.epoch }, function(result, err)
+      if state.active == active then state.active = nil end
+      view.finish()
+      view.update(err or result.message)
+      view.title(err and 'compaction · failed' or 'compaction · complete')
+    end)
   elseif name == 'sticky' then
     if words[2] and words[2] ~= 'on' and words[2] ~= 'off' then notify('Use sticky on or off', true); return end
     bridge.request('sticky', words[2] and { enabled = words[2] == 'on' } or {}, response)

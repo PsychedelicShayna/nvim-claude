@@ -61,10 +61,15 @@ function M.prompt(title, origin, submit, dismiss)
   config.footer = ' Ctrl-S submit · Esc normal, Esc close '
   local win = api.nvim_open_win(buf, true, config)
   vim.wo[win].wrap = true
+  local submitted = false
+  api.nvim_create_autocmd('BufWipeout', { buffer = buf, once = true, callback = function()
+    if not submitted and dismiss then dismiss() end
+  end })
   local function send()
     local instruction = table.concat(api.nvim_buf_get_lines(buf, 0, -1, false), '\n')
     if not instruction:match('%S') then vim.notify('NvClaude: enter an instruction'); return end
     if submit(instruction) then
+      submitted = true
       vim.cmd.stopinsert()
       close(win, origin)
     end
@@ -73,7 +78,6 @@ function M.prompt(title, origin, submit, dismiss)
   vim.keymap.set('n', '<CR>', send, { buffer = buf, silent = true })
   vim.keymap.set('n', '<Esc>', function()
     close(win, origin)
-    if dismiss then dismiss() end
   end, { buffer = buf, silent = true })
   api.nvim_create_autocmd({ 'TextChanged', 'TextChangedI' }, { buffer = buf, callback = function()
     if not api.nvim_win_is_valid(win) then return end

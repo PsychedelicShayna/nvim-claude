@@ -137,7 +137,7 @@ opts = {
 }
 ```
 
-Reasoning is disabled in this quick-edit candidate. The selected effort is still sent explicitly. The picker uses only the runtime-announced models and effort levels. Canceling any picker stage leaves the configuration unchanged. Unknown manual models remain usable with `effort = false`, which omits an unverified effort value. `context_limit_tokens = false` chooses the model default.
+Haiku 5.5 reasoning is disabled for quick edits. Other models use reasoning-off only when runtime metadata announces support; otherwise their runtime default applies. The selected effort is sent explicitly. The picker uses only runtime-announced models and effort levels. Canceling any picker stage leaves the configuration unchanged. Unknown manual models remain usable with `effort = false`, which omits an unverified effort value. `context_limit_tokens = false` chooses the model default.
 
 Manual expressions separate the runtime selector from the local budget:
 
