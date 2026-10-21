@@ -88,6 +88,17 @@ vim.cmd('enew!')
 assert(target.apply(t, { { id = t.parts[1].id, text = '  new\ntext ' } }))
 equal(api.nvim_buf_get_lines(b, 0, -1, false), { 'ab  new', 'text  cd' })
 
+b = buffer({ string.rep('界', 40) })
+api.nvim_win_set_cursor(0, { 1, 60 })
+t = target.capture(b, nil, true)
+local unicode = target.serialize(t)[1]
+equal(unicode.before, string.rep('界', 11))
+equal(unicode.after, string.rep('界', 11))
+local roundtrip = vim.json.decode(vim.json.encode(unicode))
+equal(roundtrip.before, unicode.before)
+assert(target.apply(t, { { id = t.parts[1].id, text = 'é' } }))
+equal(api.nvim_buf_get_lines(b, 0, -1, false), { string.rep('界', 20) .. 'é' .. string.rep('界', 20) })
+
 vim.g.mapleader = ' '
 vim.keymap.set('n', '<leader>cc', function() end)
 local user = vim.fn.maparg('<leader>cc', 'n', false, true).callback

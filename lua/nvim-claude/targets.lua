@@ -12,6 +12,15 @@ local function next_byte(text, col)
   return vim.fn.byteidx(text, vim.fn.charidx(text, col) + 1)
 end
 
+local function nearby(text, col, width, preceding)
+  local first, last = col, col
+  if preceding then first = math.max(0, col - width)
+  else last = math.min(#text, col + width) end
+  while first > 0 and text:byte(first + 1) and text:byte(first + 1) >= 128 and text:byte(first + 1) < 192 do first = first - 1 end
+  while last < #text and text:byte(last + 1) >= 128 and text:byte(last + 1) < 192 do last = last + 1 end
+  return text:sub(first + 1, last)
+end
+
 local function content(buf, s, e)
   return table.concat(api.nvim_buf_get_text(buf, s[1], s[2], e[1], e[2], {}), '\n')
 end
@@ -37,7 +46,7 @@ function M.positions(target)
     if content(target.buf, s, e) ~= part.expected then return nil, 'Target changed while the request was running' end
     if target.generate then
       local text = line(target.buf, s[1])
-      if text:sub(math.max(1, s[2] - 15), s[2]) ~= target.before or text:sub(s[2] + 1, s[2] + 16) ~= target.after then
+      if nearby(text, s[2], 16, true) ~= target.before or nearby(text, s[2], 16, false) ~= target.after then
         return nil, 'Insertion boundary changed'
       end
     end
@@ -83,7 +92,7 @@ function M.capture(buf, visual, generate)
     local cursor = api.nvim_win_get_cursor(0)
     local row, col = cursor[1] - 1, cursor[2]
     local text = line(buf, row)
-    target.before, target.after = text:sub(math.max(1, col - 15), col), text:sub(col + 1, col + 16)
+    target.before, target.after = nearby(text, col, 16, true), nearby(text, col, 16, false)
     target.parts[1] = segment(buf, { row, col }, { row, col })
     return target
   end
@@ -120,8 +129,8 @@ function M.serialize(target)
     result[#result + 1] = { id = p.part.id, start = p.start, ['end'] = p.finish,
       coordinates = 'zero-based UTF-8 bytes; end-exclusive',
       text = p.part.selected or p.part.expected,
-      before = text:sub(math.max(1, p.start[2] - 31), p.start[2]),
-      after = line(target.buf, p.finish[1]):sub(p.finish[2] + 1, p.finish[2] + 32) }
+      before = nearby(text, p.start[2], 32, true),
+      after = nearby(line(target.buf, p.finish[1]), p.finish[2], 32, false) }
   end
   return result
 end
