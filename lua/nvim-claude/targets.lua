@@ -133,9 +133,11 @@ function M.snapshot(set)
     local p = position(t)
     local before_line = api.nvim_buf_get_lines(t.buf, p[1], p[1] + 1, false)[1]
     local after_line = api.nvim_buf_get_lines(t.buf, p[3], p[3] + 1, false)[1]
+    local prefix = before_line:sub(1, p[2])
     result[#result + 1] = { id = t.id, start = { p[1], p[2] }, ['end'] = { p[3], p[4] },
       text = t.text, coordinates = 'zero-based UTF-8 bytes; end-exclusive',
-      before = before_line:sub(1, p[2]), after = after_line:sub(p[4] + 1) }
+      before = vim.fn.strcharpart(prefix, math.max(0, vim.fn.strchars(prefix) - 40)),
+      after = vim.fn.strcharpart(after_line:sub(p[4] + 1), 0, 40) }
   end
   return result
 end

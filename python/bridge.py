@@ -60,6 +60,7 @@ class Bridge:
         self.cancelled = False
         self.queue = asyncio.Queue()
         self.billing = 'subscription'
+        self.budget_mode = 'strict'
 
     def event(self, kind, **data):
         if self.active:
@@ -73,7 +74,7 @@ class Bridge:
     def record(self):
         return self.store.record or self.store.new(self.config, self.sticky)
 
-    async def connect(self):
+    async def connect(self, compaction=False):
         if self.client:
             return
         record = self.record()
@@ -99,7 +100,7 @@ class Bridge:
             cwd=record['cwd'], cli_path=str(CLI), include_partial_messages=True,
             resume=record['session_id'] if record['started'] else None,
             session_id=None if record['started'] else record['session_id'],
-            env=env, extra_args={'safe-mode': None, 'no-chrome': None},
+            env=env, extra_args={'safe-mode': None, 'no-chrome': None, **({} if compaction else {'disable-slash-commands': None})},
             settings=json.dumps({'disableAllHooks': True, 'idleCompaction': False}),
             stderr=lambda line: print(line, file=sys.stderr),
         )
@@ -139,8 +140,12 @@ class Bridge:
                 'models': self.metadata.get('models', [])}
 
     async def consume(self, prompt, compact=False):
-        await self.client.query(prompt)
+        if self.cancelled:
+            raise ValueError('Request canceled before model dispatch')
         record = self.record()
+        record['history_bytes'] += len(prompt.encode())
+        record['turns'] += 1
+        await self.client.query(prompt)
         record['started'] = True
         self.store.flush()
         text, streamed, boundary, result = '', False, False, None
@@ -150,6 +155,7 @@ class Bridge:
                 if event.get('type') == 'content_block_delta' and event.get('delta', {}).get('type') == 'text_delta':
                     delta = event['delta']['text']
                     text += delta
+                    record['history_bytes'] += len(delta.encode())
                     streamed = True
                     self.event('partial', text=normalize(text, self.policy))
             elif isinstance(message, sdk.AssistantMessage):
@@ -158,17 +164,18 @@ class Bridge:
                 final = ''.join(block.text for block in message.content if isinstance(block, sdk.TextBlock))
                 if not streamed:
                     text += final
+                    record['history_bytes'] += len(final.encode())
                     self.event('partial', text=normalize(text, self.policy))
             elif isinstance(message, sdk.SystemMessage):
                 if message.subtype == 'init':
                     data = message.data
-                    if data.get('tools') or data.get('mcp_servers') or data.get('agents') or data.get('skills'):
+                    if data.get('tools') or data.get('mcp_servers') or data.get('agents') or (data.get('skills') and not compact):
                         await self.client.interrupt()
                         raise ValueError('Unexpected model-accessible capability in runtime initialization')
                 elif message.subtype == 'compact_boundary':
                     boundary = True
                     record['history_bytes'] = 0
-                    record['turns'] = 0
+                    record['turns'] = 1
                     self.baselines.clear()
                     self.event('status', text='compacted; fresh context required')
                 elif message.subtype == 'status' and message.data.get('status'):
@@ -195,8 +202,6 @@ class Bridge:
         elif cache.get('ephemeral_5m_input_tokens', 0):
             record['cache_ttl'] = 300
         record['raw'].append({'prompt': prompt, 'response': text, 'compaction': compact, 'usage': usage})
-        record['history_bytes'] += len(prompt.encode()) + len(text.encode())
-        record['turns'] += 1
         self.context = await self.client.get_context_usage()
         self.store.flush()
         return text, boundary
@@ -220,8 +225,41 @@ class Bridge:
             baseline = (ident, {'text': text, 'revision': revision})
         return envelope, baseline
 
+    def prepare(self, params, limit):
+        envelope, baseline = self.envelope(params)
+        prompt = json.dumps(envelope, ensure_ascii=False)
+        if limit and byte_bound(self.system, 0, prompt, 0) > limit:
+            targets = envelope.get('targets', [])
+            if envelope.get('context') and targets and not params.get('whole_file'):
+                doc = params['document']['text'].splitlines(keepends=True)
+                first = max(0, min(t['start'][0] for t in targets) - 4)
+                last = min(len(doc), max(t['end'][0] for t in targets) + 5)
+                envelope['context'] = {
+                    'kind': 'excerpt', 'revision': params['document']['revision'],
+                    'start_row': first, 'end_row': last, 'omitted_before': first,
+                    'omitted_after': len(doc) - last, 'text': ''.join(doc[first:last]),
+                }
+                baseline = None
+                prompt = json.dumps(envelope, ensure_ascii=False)
+                if byte_bound(self.system, 0, prompt, 0) > limit:
+                    envelope['context'] = {
+                        'kind': 'excerpt', 'revision': params['document']['revision'],
+                        'included': 'Only the intact targets and their explicit before/after boundary text in targets',
+                        'omitted': 'All other document text',
+                    }
+                    prompt = json.dumps(envelope, ensure_ascii=False)
+            if byte_bound(self.system, 0, prompt, 0) > limit:
+                raise ValueError('Mandatory instruction and intact target cannot fit this budget; no request sent')
+        return prompt, baseline
+
     async def compact(self):
-        await self.connect()
+        if self.config.get('context_limit_tokens') and self.budget_mode != 'conservative':
+            raise ValueError('Unsupported hard budget for compaction: no authoritative runtime preflight bound; no request sent')
+        # The CLI's disable-slash-commands flag also disables /compact.
+        # Reopen this exact session only for the built-in compaction command.
+        # tools=[] still prevents the summarizer from invoking any skill.
+        await self.close_client()
+        await self.connect(compaction=True)
         record = self.record()
         limit = self.config.get('context_limit_tokens')
         if limit and byte_bound(self.system, record['history_bytes'], '/compact', record['turns']) > limit:
@@ -229,6 +267,8 @@ class Bridge:
         self.event('status', text='compacting')
         record['last_request'] = time.time()
         await self.consume('/compact', compact=True)
+        await self.close_client()
+        await self.connect()
         self.baselines.clear()
         return self.info()
 
@@ -239,30 +279,14 @@ class Bridge:
             record = self.record()
         await self.connect()
         self.event('status', text=params['operation'] + (' · continued' if record['started'] else ' · new'))
-        envelope, baseline = self.envelope(params)
-        prompt = json.dumps(envelope, ensure_ascii=False)
         limit = self.config.get('context_limit_tokens')
+        if limit and params.get('strict_budget', True):
+            raise ValueError('Unsupported hard budget: the installed SDK exposes current usage but no authoritative bound on runtime-added input for the next request. No request sent. Explicitly choose budget_mode="conservative" to use the documented byte-bound estimate, or model default to remove the local ceiling.')
+        prompt, baseline = self.prepare(params, limit)
         if limit:
-            # Do not market this conservative admission check as a strict ceiling.
-            # The SDK cannot bound runtime-added tokens. Strict mode refuses before dispatch.
-            if params.get('strict_budget', True):
-                raise ValueError('Unsupported hard budget: the installed SDK exposes current usage but no authoritative bound on runtime-added input for the next request. No request sent. Explicitly choose budget_mode="conservative" to use the documented byte-bound estimate, or model default to remove the local ceiling.')
-            if byte_bound(self.system, 0, prompt, 0) > limit:
-                context = envelope.get('context')
-                targets = envelope.get('targets', [])
-                if context and targets and not params.get('whole_file'):
-                    doc = params['document']['text'].splitlines(keepends=True)
-                    first = max(0, min(t['start'][0] for t in targets) - 4)
-                    last = min(len(doc), max(t['end'][0] for t in targets) + 5)
-                    envelope['context'] = {'kind': 'excerpt', 'revision': params['document']['revision'], 'start_row': first, 'end_row': last, 'omitted_before': first, 'omitted_after': len(doc)-last, 'text': ''.join(doc[first:last])}
-                    baseline = None
-                    prompt = json.dumps(envelope, ensure_ascii=False)
-                if byte_bound(self.system, 0, prompt, 0) > limit:
-                    raise ValueError('Mandatory instruction and intact target cannot fit this budget; no request sent')
             if byte_bound(self.system, record['history_bytes'], prompt, record['turns']) > limit * .70 and record['started']:
                 await self.compact()
-                envelope, baseline = self.envelope(params)
-                prompt = json.dumps(envelope, ensure_ascii=False)
+                prompt, baseline = self.prepare(params, limit)
             if byte_bound(self.system, record['history_bytes'], prompt, record['turns']) > limit:
                 raise ValueError('Request does not fit after compaction; no edit request sent')
         if not record['first_prompt']:
@@ -271,6 +295,8 @@ class Bridge:
         raw, compacted = await self.consume(prompt)
         if baseline and not compacted:
             self.baselines[baseline[0]] = baseline[1]
+        elif params.get('document'):
+            self.baselines.pop(params['document']['id'], None)
         if params['operation'] == 'ask':
             return {'text': normalize(raw, self.policy), 'raw': raw, 'info': self.info()}
         result = edit_result(raw, params['targets'], params.get('block', False))
@@ -281,7 +307,10 @@ class Bridge:
     async def dispatch(self, method, params):
         if method == 'initialize':
             self.config.update(params.get('config', {}))
+            if self.config.get('effort') is False:
+                self.config['effort'] = None
             self.billing = params.get('billing', 'subscription')
+            self.budget_mode = params.get('budget_mode', 'strict')
             return {'protocol': 1, 'sdk': sdk.__version__, 'capabilities': ['stream', 'cancel', 'sessions', 'models', 'compact'], 'system': self.system}
         if method == 'turn':
             return await self.turn(params)
@@ -345,16 +374,37 @@ class Bridge:
                 self.active, self.cancelled = request, False
                 try:
                     result = await self.dispatch(request['method'], request.get('params', {}))
-                    send({'id': request['id'], 'result': result})
+                    response = {'id': request['id'], 'result': result}
                 except Exception as error:
                     self.baselines.clear()
-                    send({'id': request['id'], 'error': {'code': -32000, 'message': str(error)}})
+                    self.store.flush()
+                    response = {'id': request['id'], 'error': {'code': -32000, 'message': str(error)}}
                     await self.close_client()
                 finally:
                     self.active = None
+                send(response)
         finally:
             await self.close_client()
             self.store.release()
+
+    async def cancel(self):
+        self.cancelled = True
+        retained = []
+        while not self.queue.empty():
+            queued = self.queue.get_nowait()
+            if queued and queued['method'] in ('turn', 'compact'):
+                send({'id': queued['id'], 'error': {'code': -32800, 'message': 'Request canceled before dispatch'}})
+            else:
+                retained.append(queued)
+        for queued in retained:
+            self.queue.put_nowait(queued)
+        if self.client:
+            try:
+                await self.client.interrupt()
+            except sdk.CLIConnectionError:
+                # Connection startup has no active SDK query yet. consume()
+                # checks the cancellation flag before its first model dispatch.
+                pass
 
     async def run(self):
         worker = asyncio.create_task(self.worker())
@@ -365,24 +415,18 @@ class Bridge:
                     break
                 method = request.get('method')
                 if method == 'cancel':
-                    self.cancelled = True
-                    if self.client:
-                        await self.client.interrupt()
+                    await self.cancel()
                     send({'id': request['id'], 'result': {'canceled': True}})
                 elif self.active or not self.queue.empty():
                     if method in ('new', 'clear', 'resume'):
-                        self.cancelled = True
-                        if self.client:
-                            await self.client.interrupt()
+                        await self.cancel()
                         await self.queue.put(request)
                     else:
                         send({'id': request['id'], 'error': {'code': -32001, 'message': 'Conversation busy; draft retained'}})
                 else:
                     await self.queue.put(request)
         finally:
-            self.cancelled = True
-            if self.client:
-                await self.client.interrupt()
+            await self.cancel()
             await self.queue.put(None)
             await worker
 

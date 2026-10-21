@@ -38,6 +38,8 @@ def parse_model(expression, current):
             if len(groups) > 1 or not native:
                 config['context_limit_tokens'] = number(last[1])
                 model = model[:last.start()]
+            elif native:
+                config['context_limit_tokens'] = None
     if not model:
         raise ValueError('Model cannot be empty')
     config['model'] = model

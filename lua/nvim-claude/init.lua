@@ -66,7 +66,7 @@ function M.invoke(operation, source)
     state.last_action = operation
     if operation == 'ask' then state.ask = set
     else state.ask = nil end
-    if operation == 'replace' then remember(buf, set) end
+    if operation == 'replace' or (operation == 'ask' and set) then remember(buf, set) end
     state.busy, submitted = true, true
     local epoch = state.epoch
     local result = ui.result(operation .. ' · starting', origin)
@@ -83,6 +83,12 @@ function M.invoke(operation, source)
       if response.info and response.info.config then state.model = response.info.config.model end
       if operation == 'ask' then result.set(response.text); result.title('answer'); return end
       if response.status == 'needs_input' then result.set(response.message); result.title('clarification · source unchanged'); return end
+      if operation == 'generate' and response.replacements[1].text == '' then
+        result.set(response.raw)
+        result.title('generate · completed without inserting text')
+        target.release(set)
+        return
+      end
       local next_set, why = target.apply(set, response.replacements)
       if next_set then
         remember(buf, next_set)
