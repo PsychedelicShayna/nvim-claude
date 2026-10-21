@@ -28,7 +28,7 @@ local function envelope(raw, request_target)
   if value.status == "needs_input" and type(value.message) == "string" and value.replacements == nil then return nil, value.message, true end
   if value.status ~= "ok" or type(value.replacements) ~= "table" then return nil, "Claude returned an unknown edit status." end
   local expected, seen = {}, {}
-  for _, segment in ipairs(request_target.segments) do expected[segment.id] = segment.block end
+  for _, segment in ipairs(request_target.segments) do expected[segment.id] = segment.block == true end
   if #value.replacements ~= #request_target.segments then return nil, "Claude returned the wrong number of replacements." end
   for _, replacement in ipairs(value.replacements) do
     if type(replacement) ~= "table" or type(replacement.id) ~= "string" or type(replacement.text) ~= "string" then return nil, "Claude returned a malformed replacement." end
