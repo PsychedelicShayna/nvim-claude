@@ -2,6 +2,8 @@
 
 Read CONTEXT.md before domain work. Read SPEC.md before designing or implementing plugin behavior; it separates owner requirements, proposals, and open decisions. Do not treat proposals as implementation authorization.
 
+The current assignment establishes a shared documentation and repository baseline for later end-to-end implementation comparisons. Do not start plugin implementation or comparison runs until the owner explicitly starts them.
+
 ## Repository workflow
 
 Follow the workspace policy where supplied. Repository-specific values and promotion rules live in docs/policy/README.md; read it before creating branches, commits, issues, or PRs.
