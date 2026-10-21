@@ -89,8 +89,10 @@ def context_for(document, baseline):
     old_revision, old_text = baseline
     if text == old_text:
         return {'kind': 'unchanged', 'revision': old_revision}
-    patch = ''.join(difflib.unified_diff(old_text.splitlines(True), text.splitlines(True),
-                                       fromfile=old_revision, tofile=revision))
+    chunks = difflib.unified_diff(old_text.splitlines(True), text.splitlines(True),
+                                  fromfile=old_revision, tofile=revision)
+    patch = ''.join(chunk if chunk.endswith('\n') else
+                    chunk + '\n\\ No newline at end of file\n' for chunk in chunks)
     diff = {'kind': 'diff', 'document_id': document['id'], 'base_revision': old_revision,
             'revision': revision, 'text': patch}
     return diff if byte_bound(encode(diff)) < byte_bound(encode(snapshot)) else snapshot

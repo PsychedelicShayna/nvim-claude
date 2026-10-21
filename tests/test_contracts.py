@@ -13,6 +13,8 @@ class Contracts(unittest.TestCase):
     def test_native_variant_and_explicit_local_budget(self):
         value = parse_model('claude-opus-4-6[1m][500k]:high', self.config)
         self.assertEqual(value, {'model': 'claude-opus-4-6[1m]', 'effort': 'high', 'context_limit_tokens': 500000})
+        self.assertEqual(parse_model('claude-opus-4-6[1m]:high', self.config), {
+            'model': 'claude-opus-4-6[1m]', 'effort': 'high', 'context_limit_tokens': None})
         self.assertEqual(parse_model('vendor:model[limit=90k]', self.config)['model'], 'vendor:model')
         self.assertEqual(parse_model('vendor:model:other', self.config)['model'], 'vendor:model:other')
         self.assertEqual(parse_model('unknown[variant]', self.config)['model'], 'unknown[variant]')

@@ -271,7 +271,7 @@ class Bridge:
         elif usage.get('cache_creation', {}).get('ephemeral_5m_input_tokens', 0):
             self.ttl = 300
         document = params.get('document')
-        if document and envelope['context']['kind'] != 'excerpt':
+        if document and envelope['context']['kind'] in ('snapshot', 'diff'):
             self.baselines[document['id']] = (document['revision'], document['text'])
         self.store.write(self.record)
         await self.refresh_context()
