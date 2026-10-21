@@ -2,13 +2,13 @@
 
 nvim-claude is a planned Neovim plugin for explicit, cursor-local collaboration with Claude. It replaces the owner's old `inf`-backed inline workflow without turning the editor into a chat sidebar or giving the model file-editing tools.
 
-This is a single-context repository. [README.md](README.md) explains the product; [SPEC.md](SPEC.md) owns the proposed behavior and open decisions. No plugin implementation exists yet. A proposal in the spec is not an owner-approved decision or an instruction to begin implementation.
+This is a single-context repository. [README.md](README.md) explains the product; [SPEC.md](SPEC.md) defines the shared implementation baseline and required runtime evidence. No plugin implementation exists yet. Preparing the baseline does not authorize starting the later implementation runs.
 
 ## Confirmed direction
 
 - Preserve the working interaction: a small prompt float near the cursor, visual replacement or cursor insertion, a model picker, and separate answers for questions.
 - The reference implementation in the owner's configuration is `NervGen`, in `lua/usercmds/nervgen.lua`. `<leader>i` invokes generation/replacement; `<leader>I` opens the model picker. The local `config` symlink is private reference material, not a dependency to publish.
-- Lua owns the editor interaction. A local Python process hosts the official Claude Agent SDK. Transport is flexible; stdio RPC is the current proposal, not a requirement to implement LSP.
+- Lua owns the editor interaction. A local Python process hosts the official Claude Agent SDK. The baseline chooses JSON-RPC over stdio with LSP-style framing; it does not implement LSP.
 - Setup creates a virtual environment from system Python, installs the latest released SDK with pip, and runs its bundled CLI. No separate Claude Code installation is required. This supersedes the original fixed-version-pinning idea.
 - Show runtime-announced models and allow manually entered model slugs.
 - Haiku 5.5 with a 100,000-token prompt ceiling is the initial use case. Keep physical model capacity, a local budget, and pricing boundaries distinct.
@@ -37,9 +37,9 @@ This is a single-context repository. [README.md](README.md) explains the product
 | Context diff | An appended change from a named baseline revision to a new revision. It does not rewrite earlier conversation messages. |
 | Conversation | The plugin's logical sequence of user instructions and raw assistant replies, with model configuration and retention state. |
 | SDK session | The runtime handle and history used to carry a conversation through Claude Code. It is distinct from a Neovim session. |
-| Ephemeral conversation | A conversation not retained for later resumption after its lifecycle expires. Whether it may use temporary disk storage remains undecided. |
+| Ephemeral conversation | A conversation with temporary SDK-backed disk storage, removed when its lifecycle expires unless saved. |
 | Saved conversation | A conversation explicitly retained for resumption, regardless of cache warmth. |
-| Sticky mode | Automatic persistence for the active and subsequent conversations, under the spec's proposed transition rules. |
+| Sticky mode | Automatic persistence for the active and subsequent conversations, under the spec's transition rules. |
 | Prompt cache | Provider-side reuse of computation for an unchanged request prefix. It is not the store of conversation messages. |
 | Cache TTL | The provider's lifetime for a cached prefix after a qualifying request. An estimated TTL is not proof of a live entry. |
 | Ephemeral expiry | The plugin's decision to start fresh after its cache-aware inactivity interval. It does not delete remote cache entries. |
@@ -49,7 +49,7 @@ This is a single-context repository. [README.md](README.md) explains the product
 | Runtime model selector | The model ID or native variant selector accepted by Claude Code. A plugin-local budget suffix is removed before passing this value to the SDK. |
 | Effort | A model-supported reasoning setting, distinct from model identity and context capacity. |
 | Raw output | The assistant text retained in conversation history before presentation changes. |
-| Presentation output | The text displayed or inserted after the chosen punctuation mapping. |
+| Presentation output | Ask text or decoded edit text after the chosen punctuation mapping. The edit envelope itself is not inserted. |
 | Watermarks command | The draft command name for punctuation normalization. It is not watermark detection and says nothing about who authored text. |
 | Python bridge | The plugin-owned Python process translating local editor requests to SDK operations and streaming events back. |
 | Bundled CLI | The Claude Code executable distributed with the Python SDK. The Python wrapper's license does not relicense this runtime. |
@@ -87,11 +87,11 @@ This section records the intended workflow, not proof that remote branches or pr
 
 The current assignment establishes the common baseline only. The owner intends to compare complete plugin implementations built independently in separate worktrees, not divide one implementation among agents. Planned candidates include Astra in NeoPi, Astra in Codex CLI, and Sol 6.1; Opus 5.5 is a possible additional candidate. The Astra runs are intended to use extra-high reasoning. This is a plan for later, not authorization to create or launch those runs now.
 
-Assess the specification before calling it a fixed comparison target. Unresolved behavior must either be settled for every run or explicitly left as an implementation choice shared by every run. Do not claim target lock merely because the documents exist.
+SPEC.md settles the shared interaction and storage choices. Start every comparison worktree from the same baseline commit and retain its behavior contract. Module design and presentation styling can differ; dropping a required feature cannot count as finishing the comparison.
 
-## Unresolved design
+## Runtime evidence still required
 
-The open-decision section of SPEC.md is authoritative. In particular: the default Normal-mode short action, speed-sensitive mapping behavior, ephemeral disk storage, raw versus structured edit output, and blockwise output representation still need resolution. Runtime probes must establish catalogue discovery, no-tools enforcement, authentication, compaction, strict budget accounting, and prompt replacement before those behaviors are advertised as working.
+The specification is ready for implementation, not proof of runtime support. Each implementation must establish catalogue discovery, no-tools enforcement, authentication, compaction, strict budget accounting, exact session retention, and prompt replacement with the actual installed SDK and CLI. Record their versions because latest-on-setup can resolve differently across runs.
 
 ## Naming
 
