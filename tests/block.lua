@@ -1,0 +1,25 @@
+vim.opt.runtimepath:append(vim.fn.getcwd())
+local target = require('nvim-claude.target')
+local scratch = vim.fn.stdpath('cache') .. '/nvim-claude-block-test-' .. vim.fn.getpid()
+vim.fn.mkdir(vim.fn.fnamemodify(scratch, ':h'), 'p')
+vim.fn.writefile({ 'a\tZ', 'b\tY' }, scratch)
+vim.cmd.edit(vim.fn.fnameescape(scratch))
+local buf = vim.api.nvim_get_current_buf()
+vim.api.nvim_win_set_cursor(0, { 1, 1 })
+vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<C-v>j<Esc>', true, false, true), 'nx', false)
+local selection = assert(target.capture('replace', true, false))
+assert(selection.block and #selection.targets == 2, vim.inspect(selection))
+local replacements = {}
+for _, item in ipairs(selection.targets) do
+  replacements[#replacements + 1] = { id = item.id, text = 'Q' }
+end
+assert(target.apply(selection, replacements))
+local actual = vim.api.nvim_buf_get_lines(buf, 0, 2, false)
+assert(actual[1] == 'a      QZ' and actual[2] == 'b      QY', vim.inspect(actual))
+local followup = assert(target.capture('replace', false, false))
+assert(followup.targets[1].text == 'Q' and followup.targets[2].text == 'Q')
+vim.api.nvim_buf_call(buf, function() vim.cmd('undo') end)
+local undone = vim.api.nvim_buf_get_lines(buf, 0, 2, false)
+assert(undone[1] == 'a\tZ' and undone[2] == 'b\tY', vim.inspect(undone))
+print('blockwise tab cells and one-step undo passed')
+vim.fn.delete(scratch)
