@@ -116,8 +116,20 @@ def excerpt(envelope, available):
     first = min(t['start'][0] for t in value['targets'])
     last = max(t['end'][0] for t in value['targets'])
     # An all-file target must not turn into a silently partial whole-file task.
-    if first == 0 and last >= len(lines) - 1:
+    target = value['targets'][0]
+    if len(value['targets']) == 1 and value['operation'] == 'replace' and target['start'] == [0, 0] and target['end'] == [len(lines) - 1, len(lines[-1].encode('utf-8'))]:
         return value
     lo, hi = max(0, first - 3), min(len(lines), last + 4)
     value['context'] = {'kind': 'excerpt', 'revision': context['revision'], 'start_row': lo, 'end_row': hi, 'omitted_before': lo, 'omitted_after': len(lines) - hi, 'text': '\n'.join(lines[lo:hi])}
+    if byte_bound(json.dumps(value, ensure_ascii=False, separators=(',', ':'))) > available:
+        fragments = []
+        for target in value['targets']:
+            row, column = target['start']
+            end_row, end_column = target['end']
+            first_bytes = lines[row].encode('utf-8')
+            last_bytes = lines[end_row].encode('utf-8')
+            before = first_bytes[max(0, column - 128):column].decode('utf-8', errors='ignore')
+            after = last_bytes[end_column:end_column + 128].decode('utf-8', errors='ignore')
+            fragments.append({'target_id': target['id'], 'before': before, 'text': target['text'], 'after': after})
+        value['context'] = {'kind': 'excerpt', 'revision': context['revision'], 'omitted_regions': 'All document content except the explicitly located target fragments below is unknown.', 'fragments': fragments}
     return value

@@ -242,11 +242,17 @@ class Bridge:
             r = self.record
         await self.connect()
         validate_config(self.config, self.metadata.get('models', []))
-        wire = context_envelope(envelope, r['baselines'])
+        empty_allowance = self.ceiling() - byte_bound(self.prompt) - OVERHEAD
+        dispatch_envelope = envelope
+        if byte_bound(encode(envelope)) > empty_allowance:
+            dispatch_envelope = excerpt(envelope, empty_allowance)
+            if byte_bound(encode(dispatch_envelope)) > empty_allowance:
+                raise ValueError('Mandatory instruction and intact target cannot fit even an empty conversation under the selected ceiling. No request sent; budget unchanged.')
+        wire = context_envelope(dispatch_envelope, r['baselines'])
         payload = encode(wire)
         if r['has_turns'] and self.base_bound() + byte_bound(payload) > self.ceiling() * 0.65:
             await self.compact()
-            wire = context_envelope(envelope, r['baselines'])
+            wire = context_envelope(dispatch_envelope, r['baselines'])
             payload = encode(wire)
         if self.base_bound() + byte_bound(payload) > self.ceiling():
             wire = excerpt(envelope, self.ceiling() - self.base_bound())
