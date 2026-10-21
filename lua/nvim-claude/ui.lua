@@ -91,7 +91,7 @@ function M.prompt(operation, model, origin, submit, dismiss)
     if not api.nvim_win_is_valid(win) then return end
     local height = math.min(10, math.max(3, api.nvim_buf_line_count(buf)))
     local next_config = geometry(height, false, origin)
-    api.nvim_win_set_config(win, { height = next_config.height, row = next_config.row, col = next_config.col })
+    api.nvim_win_set_config(win, { relative = 'editor', height = next_config.height, row = next_config.row, col = next_config.col })
   end })
   api.nvim_create_autocmd('BufWipeout', { buffer = buf, once = true, callback = function()
     if not closed then closed = true; if dismiss then dismiss() end end
