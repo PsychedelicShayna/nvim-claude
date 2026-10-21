@@ -39,6 +39,14 @@ The desired personal workflow is to reuse existing Claude Code authentication wh
 
 API-key authentication is a documented SDK path and bills as API usage. The plugin must make the active authentication/billing mode visible when known, report uncertainty when it is not known, and never silently switch from subscription credentials to a paid API key.
 
+## Installation acceptance
+
+The implementation must install by repository name and branch through a plugin manager such as lazy.nvim on another supported Neovim installation. No private configuration, local worktree path, or preinstalled Claude Code is required.
+
+The shared Lua entry point is `require("nvim-claude").setup(opts)`. lazy.nvim uses `main = "nvim-claude"` and `opts = {}` to invoke setup. Commands and the default bindings below must appear before authentication succeeds. Override individual mappings through `opts.keys`, disable one with `false`, or set `keys = false` to disable all plugin mappings. The [specification](SPEC.md#installable-plugin-deliverable) defines the option names and portability checks.
+
+This branch still contains the specification, not an installable implementation. Each completed benchmark candidate must replace that notice with truthful installation instructions and a lazy.nvim example naming its actual published branch. The owner can switch branches to compare candidates without promoting any of them to master.
+
 ## Specified usage
 
 The baseline uses a `<leader>c` namespace so it can coexist with my current `<leader>i` mappings. Mappings will be configurable. Keeping the familiar `i`/`I` interaction is also an option; installing the plugin must not overwrite my existing mappings without an explicit configuration choice.
