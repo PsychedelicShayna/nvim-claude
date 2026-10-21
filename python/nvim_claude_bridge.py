@@ -113,6 +113,7 @@ class Bridge:
         self.active: dict | None = None
         self.client: ClaudeSDKClient | None = None
         self.busy: asyncio.Task | None = None
+        self.current_request: tuple[str, int] | None = None
         self.epoch = 0
         self.prompt = PROMPT
         self.config = {"model": "claude-haiku-5-5", "effort": "low", "context_limit_tokens": BUDGET}
@@ -207,6 +208,8 @@ class Bridge:
     async def connect(self):
         if self.client:
             return self.client
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            raise ValueError("ANTHROPIC_API_KEY is set; unset it to use Claude Code login without silently switching to API-key billing")
         client = ClaudeSDKClient(self.options(self.active.get("session") if self.active else None))
         await client.connect()
         self.client = client
@@ -236,8 +239,11 @@ class Bridge:
     async def cancel(self):
         if not self.busy or self.busy.done():
             return False
+        request = self.current_request
         self.epoch += 1
         task = self.busy
+        if request:
+            await self.event(request[0], request[1], "canceled")
         if self.client:
             try:
                 await self.client.interrupt()
@@ -251,14 +257,27 @@ class Bridge:
         self.busy = None
         if self.active:
             self.active["baselines"] = {}
+            self.save_manifest()
         return True
 
     def state(self):
         conv = self.active
+        account = self.info.get("account") or {}
+        runtime = {"claude_code_version": self.info.get("claude_code_version"),
+                   "subscriptionType": account.get("subscriptionType"), "apiProvider": account.get("apiProvider")}
+        occupancy = conv.get("occupancy") if conv else None
+        physical = occupancy.get("rawMaxTokens") if isinstance(occupancy, dict) else None
+        local = self.config.get("context_limit_tokens")
+        announced = next((item for item in self.info.get("models", [])
+                          if self.config["model"] in (item.get("value"), item.get("resolvedModel"))), None)
         return {"epoch": self.epoch, "conversation": conv["id"] if conv else None,
                 "saved": bool(conv and conv["saved"]), "sticky": self.sticky,
-                "config": self.config, "occupancy": conv.get("occupancy") if conv else None,
-                "usage": conv.get("usage") if conv else {}, "runtime": self.info,
+                "config": self.config, "occupancy": occupancy,
+                "effective_budget": min(local, physical) if local and physical else local or physical,
+                "resolved_model": announced.get("resolvedModel") if announced else None,
+                "effort_support": ("unknown" if not announced else
+                                   announced.get("supportedEffortLevels") if announced.get("supportsEffort") else "unsupported"),
+                "usage": conv.get("usage") if conv else {}, "runtime": runtime,
                 "sdk": importlib.metadata.version("claude-agent-sdk"),
                 "cache": f"Estimated prefix TTL: {conv.get('ttl', 300) if conv else 300}s since last completed turn; not proof of a live cache entry.",
                 "budget": "Conservative preflight estimate, not a verified runtime-enforced ceiling",
@@ -280,6 +299,11 @@ class Bridge:
         except Exception as exc:
             raise ValueError("Cannot measure current context; request refused") from exc
         occupancy = usage.get("totalTokens")
+        physical = usage.get("rawMaxTokens")
+        if isinstance(physical, int) and physical > 0:
+            limit = min(limit, physical)
+        if required >= limit:
+            raise ValueError("The requested input exceeds the model's physical context window")
         if not isinstance(occupancy, int) or occupancy < 0:
             raise ValueError("Runtime did not provide context occupancy")
         if self.active:
@@ -292,14 +316,16 @@ class Bridge:
 
     async def compact_runtime(self, client):
         await client.query("/compact")
-        completed = False
+        completed, boundary = False, False
         async for message in client.receive_response():
-            if isinstance(message, ResultMessage):
+            if isinstance(message, SystemMessage) and message.subtype == "compact_boundary":
+                boundary = True
+            elif isinstance(message, ResultMessage):
                 if message.is_error:
                     raise ValueError(f"Runtime compaction failed: {message.errors or message.result}")
                 completed = True
-        if not completed:
-            raise ValueError("Runtime did not confirm the compaction request")
+        if not completed or not boundary:
+            raise ValueError("Runtime did not announce a completed compaction boundary")
         if self.active:
             self.active["baselines"] = {}
             self.save_manifest()
@@ -319,12 +345,22 @@ class Bridge:
             lo = min(target["start"][0] for target in request["targets"])
             hi = max(target["end"][0] for target in request["targets"]) + 1
             lo, hi = max(0, lo), min(len(lines), hi)
-            if len("".join(lines[lo:hi]).encode()) > allowance:
+            sizes = [len(line.encode()) for line in lines]
+            used = sum(sizes[lo:hi])
+            if used > allowance:
                 raise ValueError("The selected target alone exceeds the context budget")
-            while lo > 0 and len("".join(lines[lo - 1:hi]).encode()) <= allowance:
-                lo -= 1
-            while hi < len(lines) and len("".join(lines[lo:hi + 1]).encode()) <= allowance:
-                hi += 1
+            while True:
+                grew = False
+                if lo > 0 and used + sizes[lo - 1] <= allowance:
+                    lo -= 1
+                    used += sizes[lo]
+                    grew = True
+                if hi < len(lines) and used + sizes[hi] <= allowance:
+                    used += sizes[hi]
+                    hi += 1
+                    grew = True
+                if not grew:
+                    break
             snapshot = {"kind": "excerpt", "revision": rev, "text": "".join(lines[lo:hi]),
                         "first_row": lo, "end_row": hi, "total_rows": len(lines),
                         "omitted_before": lo > 0, "omitted_after": hi < len(lines)}
@@ -397,7 +433,10 @@ class Bridge:
             conv["last"] = time.time()
             conv["usage"] = result.usage or {}
             creation = conv["usage"].get("cache_creation") or {}
-            conv["ttl"] = 3600 if creation.get("ephemeral_1h_input_tokens", 0) else 300
+            if creation.get("ephemeral_1h_input_tokens", 0):
+                conv["ttl"] = 3600
+            elif creation.get("ephemeral_5m_input_tokens", 0):
+                conv["ttl"] = 300
             try:
                 conv["occupancy"] = await client.get_context_usage()
             except Exception:
@@ -416,19 +455,19 @@ class Bridge:
                 else:
                     await self.event(request_id, epoch, "complete", result=parsed, raw=raw, usage=conv["usage"])
         except asyncio.CancelledError:
-            await self.event(request_id, epoch, "canceled")
             raise
         except Exception as exc:
             if conv:
                 conv["baselines"] = {}
+                self.save_manifest()
             await self.event(request_id, epoch, "error", message=str(exc))
         finally:
             if self.busy is asyncio.current_task():
                 self.busy = None
+                self.current_request = None
 
     async def handle(self, method: str, params: dict):
         if method == "initialize":
-            await self.clean_abandoned()
             return {"version": 1, "capabilities": ["ask", "replace", "generate", "sessions", "streaming"], **self.state()}
         if method == "state":
             return self.state()
@@ -436,8 +475,20 @@ class Bridge:
             if self.busy:
                 raise ValueError("Finish or cancel the active request before changing models")
             new = expression(params["expression"], self.config) if "expression" in params else {**self.config, **params}
+            if not isinstance(new.get("model"), str) or not new["model"]:
+                raise ValueError("Missing runtime model selector")
             if new.get("effort") not in EFFORTS and new.get("effort") is not None:
                 raise ValueError("Unrecognized effort")
+            limit = new.get("context_limit_tokens")
+            if limit is not None and (not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0):
+                raise ValueError("Context budget must be a positive integer or model default")
+            if new["model"] != self.config["model"] or new.get("effort") != self.config.get("effort"):
+                await self.connect()
+                known = next((item for item in self.info.get("models", [])
+                              if new["model"] in (item.get("value"), item.get("resolvedModel"))), None)
+                if known and new.get("effort"):
+                    if not known.get("supportsEffort") or new["effort"] not in (known.get("supportedEffortLevels") or []):
+                        raise ValueError(f"Runtime does not announce effort {new['effort']} for {new['model']}")
             await self.close_client()
             self.config = new
             if self.active:
@@ -448,7 +499,7 @@ class Bridge:
         if method == "models":
             client = await self.connect()
             self.info = await client.get_server_info() or {}
-            return {"models": self.info.get("models", []), "runtime": self.info}
+            return {"models": self.info.get("models", []), "runtime": self.state()["runtime"]}
         if method == "begin":
             if self.busy and not self.busy.done():
                 raise ValueError("Conversation busy; your draft has not been submitted")
@@ -459,6 +510,7 @@ class Bridge:
             self.epoch += 1
             epoch = self.epoch
             request_id = str(params["request"])
+            self.current_request = (request_id, epoch)
             self.busy = asyncio.create_task(self.run(request_id, epoch, params))
             return {"epoch": epoch, "request": request_id}
         if method == "cancel":
@@ -523,6 +575,7 @@ async def main():
     if len(sys.argv) != 2:
         raise SystemExit("Usage: bridge.py <plugin-data-dir>")
     bridge = Bridge(Path(sys.argv[1]))
+    await bridge.clean_abandoned()
     while (request := await read_frame()) is not None:
         if "id" not in request:
             continue
