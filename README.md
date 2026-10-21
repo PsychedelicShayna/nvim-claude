@@ -1,5 +1,12 @@
 # nvim-claude
 
+> [!IMPORTANT]
+> Round 1 metadata-only post-run correction. This candidate ran with GPT-6.1 Sol, `openai-codex/gpt-6.1-sol`, at **high** effort in NeoPi.
+> Original branch: `experimental/benchmark-sol-6-1-neopi-20261021-7b29e6`.
+> Original delivered commit: [`3f30f0d68374001268c403a3815f9bdd74f72f6c`](https://github.com/PsychedelicShayna/nvim-claude/commit/3f30f0d68374001268c403a3815f9bdd74f72f6c).
+> Corrected installable branch: [`experimental/round-1-sol-6-1-high-neopi-20261021-7b29e6`](https://github.com/PsychedelicShayna/nvim-claude/tree/experimental/round-1-sol-6-1-high-neopi-20261021-7b29e6).
+> The branch rename and this README-only commit correct attribution after delivery. They do not change the implementation, rerun the benchmark, or rewrite the historical run record.
+
 A personal Neovim plugin for quick, deliberate collaboration with Claude while editing text. Select something, open a small prompt float near the cursor, say what you want, and keep writing.
 
 This is the independent Sol 6.1 / NeoPi benchmark candidate. It implements the cursor-local editor client and Python SDK bridge described in [SPEC.md](SPEC.md). The candidate remains unmerged pending the owner's comparison. See [the run record](docs/agents/benchmark-result.md) for exercised behavior and limitations.
@@ -48,7 +55,7 @@ The shared Lua entry point is `require("nvim-claude").setup(opts)`. lazy.nvim us
 ```lua
 {
   "PsychedelicShayna/nvim-claude",
-  branch = "experimental/benchmark-sol-6-1-neopi-20261021-7b29e6",
+  branch = "experimental/round-1-sol-6-1-high-neopi-20261021-7b29e6",
   main = "nvim-claude",
   opts = {},
 }
