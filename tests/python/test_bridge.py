@@ -104,6 +104,7 @@ class BridgePolicyTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(options.setting_sources, [])
             self.assertEqual(options.skills, [])
             self.assertEqual(options.plugins, [])
+            self.assertEqual(options.system_prompt, { "type": "custom", "prompt": "prompt", "snapshot": False })
             instance.store.close()
 
     def test_model_discovery_uses_runtime_metadata(self):

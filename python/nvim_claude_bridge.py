@@ -271,7 +271,11 @@ class Bridge:
             "skills": [],
             "agents": {},
             "plugins": [],
-            "system_prompt": params.get("system_prompt") or self.default_prompt,
+            "system_prompt": {
+                "type": "custom",
+                "prompt": params.get("system_prompt") or self.default_prompt,
+                "snapshot": False,
+            },
             "model": config.get("model"),
             "effort": config.get("effort"),
             "include_partial_messages": True,
