@@ -307,9 +307,11 @@ function M.call(method, params, callback)
 end
 
 function M.notify(method, params)
-  if state.process then
-    send({ jsonrpc = "2.0", method = method, params = params or {} })
-  end
+  start(function(ok)
+    if ok then
+      send({ jsonrpc = "2.0", method = method, params = params or {} })
+    end
+  end)
 end
 
 function M.stop()
