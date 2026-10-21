@@ -1,8 +1,8 @@
 # Project context
 
-nvim-claude is a planned Neovim plugin for explicit, cursor-local collaboration with Claude. It replaces the owner's old `inf`-backed inline workflow without turning the editor into a chat sidebar or giving the model file-editing tools.
+nvim-claude is a Neovim plugin for explicit, cursor-local collaboration with Claude. It replaces the owner's old `inf`-backed inline workflow without turning the editor into a chat sidebar or giving the model file-editing tools.
 
-This is the benchmark launcher baseline, not a plugin implementation. [README.md](README.md) explains the product and [SPEC.md](SPEC.md) defines its complete behavior. Root AGENTS.md and [the benchmark run contract](docs/agents/benchmark.md) make the owner's word "implement" sufficient to start one independent candidate. Preparing or inspecting this launcher alone does not start a run.
+This branch contains the independent Sol 6.1 / NeoPi implementation candidate, derived from the frozen benchmark launcher. [README.md](README.md) documents installation and behavior; [the run result](docs/agents/benchmark-result.md) records verification and limitations. [SPEC.md](SPEC.md) remains the unchanged shared acceptance baseline. Historical comparison-planning notes below describe the preparation; the owner later authorized six NeoPi candidates across three effort levels. Candidate integration still requires owner selection.
 
 ## Confirmed direction
 
