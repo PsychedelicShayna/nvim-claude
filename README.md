@@ -41,7 +41,7 @@ API-key authentication is a documented SDK path and bills as API usage. `:NvClau
 
 ## Installation
 
-nvim-claude requires Neovim 0.10 or newer and Python 3.10 or newer. Claude Code does not need to be installed separately. On the first command that needs the backend, the plugin creates a virtual environment under Neovim's data directory, installs the latest released `claude-agent-sdk`, and starts the bundled Claude Code runtime. Setup and the editor UI load before provisioning or authentication.
+nvim-claude requires Neovim 0.10 or newer and Python 3.10 or newer. Claude Code does not need to be installed separately. On the first command that needs the backend, the plugin creates a virtual environment under Neovim's data directory, installs the latest released `claude-agent-sdk`, and starts the bundled Claude Code runtime. Setup and the editor UI load before provisioning or authentication. `:NvClaude update` explicitly rebuilds that environment with the latest released SDK; startup never upgrades it in the background.
 
 ```lua
 {

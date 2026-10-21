@@ -104,18 +104,19 @@ class BridgePolicyTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(options.setting_sources, [])
             self.assertEqual(options.skills, [])
             self.assertEqual(options.plugins, [])
-            self.assertEqual(options.system_prompt, { "type": "custom", "prompt": "prompt", "snapshot": False })
+            self.assertEqual(options.system_prompt, {"type": "custom", "prompt": "prompt", "snapshot": False})
             instance.store.close()
 
     def test_model_discovery_uses_runtime_metadata(self):
         found = {}
         bridge_module.Bridge._walk_models({
             "availableModels": [
-                {"id": "claude-haiku-5-5", "displayName": "Haiku 5.5", "supportedEfforts": ["low", "high"]}
+                {"value": "haiku", "resolvedModel": "claude-haiku-5-5", "displayName": "Haiku 5.5", "supportedEffortLevels": ["low", "high"]}
             ]
         }, found)
-        self.assertEqual(found["claude-haiku-5-5"]["efforts"], ["low", "high"])
-        self.assertNotIn("claude-opus-4-6", found)
+        self.assertEqual(found["haiku"]["efforts"], ["low", "high"])
+        self.assertEqual(found["haiku"]["resolved_model"], "claude-haiku-5-5")
+        self.assertNotIn("opus", found)
 
 
 if __name__ == "__main__":

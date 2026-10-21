@@ -314,6 +314,39 @@ function M.notify(method, params)
   end)
 end
 
+function M.update(callback)
+  callback = callback or function() end
+  if state.provisioning or state.starting then
+    callback(false, "runtime provisioning is already in progress")
+    return
+  end
+  local function rebuild()
+    local p = paths()
+    pcall(vim.fn.delete, p.runtime, "rf")
+    state.stderr_buffer = ""
+    start(callback)
+  end
+  if not state.process then
+    rebuild()
+    return
+  end
+  send({ jsonrpc = "2.0", method = "shutdown", params = {} })
+  local timer = vim.uv.new_timer()
+  local attempts = 0
+  timer:start(50, 50, vim.schedule_wrap(function()
+    attempts = attempts + 1
+    if not state.process then
+      timer:stop()
+      timer:close()
+      rebuild()
+    elseif attempts >= 200 then
+      timer:stop()
+      timer:close()
+      callback(false, "the existing bridge did not stop")
+    end
+  end))
+end
+
 function M.stop()
   if state.process then
     send({ jsonrpc = "2.0", method = "shutdown", params = {} })

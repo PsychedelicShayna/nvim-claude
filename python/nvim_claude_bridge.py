@@ -581,8 +581,18 @@ class Bridge:
         if isinstance(value, dict):
             model_id = value.get("id") or value.get("model") or value.get("value")
             if model_id and isinstance(model_id, str) and "model" in key.lower():
-                efforts = value.get("efforts") or value.get("supportedEfforts") or []
-                found[model_id] = {"id": model_id, "label": value.get("name") or value.get("displayName") or model_id, "efforts": efforts}
+                efforts = (
+                    value.get("efforts")
+                    or value.get("supportedEfforts")
+                    or value.get("supportedEffortLevels")
+                    or []
+                )
+                found[model_id] = {
+                    "id": model_id,
+                    "resolved_model": value.get("resolvedModel"),
+                    "label": value.get("name") or value.get("displayName") or model_id,
+                    "efforts": efforts,
+                }
             for child_key, child in value.items():
                 Bridge._walk_models(child, found, str(child_key))
         elif isinstance(value, list):
@@ -607,7 +617,15 @@ class Bridge:
                 usage = await self._context_usage(self.client)
             except Exception:
                 usage = None
-        authentication = "api-key environment" if os.environ.get("ANTHROPIC_API_KEY") else "runtime-managed or unknown"
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            authentication = "api-key environment"
+        else:
+            account = self.server_info.get("account") if isinstance(self.server_info, dict) else None
+            if isinstance(account, dict) and account.get("subscriptionType"):
+                provider = account.get("apiProvider") or "runtime"
+                authentication = f"{provider} subscription ({account['subscriptionType']})"
+            else:
+                authentication = "runtime-managed or unknown"
         return {
             "sdk_version": self.sdk_version,
             "cli_version": await self._read_cli_version(),
@@ -620,6 +638,7 @@ class Bridge:
             "models_announced": bool(self.server_info),
             "cache": {"ttl_seconds": params.get("cache_ttl_seconds", 3600), "provenance": "configured estimate"},
             "no_tools": {
+                "verified": self.client is not None,
                 "tools": [], "allowed_tools": [], "mcp_servers": {}, "strict_mcp_config": True,
                 "setting_sources": [], "skills": [], "agents": {}, "plugins": [],
             },

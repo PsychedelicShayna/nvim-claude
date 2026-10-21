@@ -17,9 +17,17 @@ local actions = {
   info = function() controller.info() end,
   list = function() controller.list() end,
   login = function() controller.login() end,
+  update = function() controller.update() end,
   sticky = function(args)
     local value
-    if args[2] == "on" then value = true elseif args[2] == "off" then value = false end
+    if args[2] == "on" then
+      value = true
+    elseif args[2] == "off" then
+      value = false
+    elseif args[2] ~= nil then
+      util.notify("sticky expects on or off", vim.log.levels.ERROR)
+      return
+    end
     controller.sticky(value)
   end,
   model = function(args)
@@ -38,7 +46,7 @@ local actions = {
 }
 
 local completion = {
-  [1] = { "ask", "replace", "generate", "cancel", "clear", "new", "save", "sticky", "compact", "info", "list", "model", "login", "watermarks", "system" },
+  [1] = { "ask", "replace", "generate", "cancel", "clear", "new", "save", "sticky", "compact", "info", "list", "model", "login", "update", "watermarks", "system" },
   ask = { "previous" },
   sticky = { "on", "off" },
   model = { "manual" },

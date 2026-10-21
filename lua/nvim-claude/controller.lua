@@ -361,7 +361,7 @@ function M.info()
       "Bundled CLI: " .. tostring(result.cli_version or "unavailable"),
       "Python: " .. tostring(result.python_version),
       "Cache estimate: " .. tostring((result.cache or {}).ttl_seconds or "unknown") .. " seconds (configured estimate)",
-      "No-tools configuration: verified on bridge connection",
+      "No-tools configuration: " .. (((result.no_tools or {}).verified and "verified by runtime context") or "configured; runtime not connected yet"),
     }
     ui.show_text("nvim-claude info", table.concat(lines, "\n"), vim.api.nvim_get_current_win(), "text")
   end)
@@ -455,6 +455,17 @@ end
 function M.system_default()
   state.system_prompt = state.default_system_prompt
   util.notify("system prompt restored for this Neovim session")
+end
+
+function M.update()
+  util.notify("updating the plugin-owned Claude Agent SDK runtime")
+  bridge.update(function(ok, err)
+    if ok then
+      util.notify("Claude Agent SDK runtime updated")
+    else
+      util.notify(err, vim.log.levels.ERROR)
+    end
+  end)
 end
 
 function M.login()
