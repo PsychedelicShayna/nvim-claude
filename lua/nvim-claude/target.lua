@@ -90,11 +90,15 @@ function M.capture(op, visual, insert)
         local start_pos, end_pos = a, b
         if a[2] > b[2] or (a[2] == b[2] and a[3] > b[3]) then start_pos, end_pos = b, a end
         sc = boundary(content[sr + 1], math.max(start_pos[3] - 1, 0))
-        ec = end_boundary(content[er + 1], math.min(end_pos[3], #(content[er + 1] or '')))
+        local endpoint = math.min(end_pos[3], #(content[er + 1] or ''))
+        ec = vim.o.selection == 'exclusive'
+          and boundary(content[er + 1], math.max(endpoint - 1, 0))
+          or end_boundary(content[er + 1], endpoint)
       end
       result.targets[1] = mark(buf, sr, sc, er, ec)
     end
     if #result.targets == 0 then return nil, 'Selection has no text' end
+    remembered[buf] = result
   elseif op == 'replace' or op == 'previous' then
     local previous = remembered[buf]
     if not previous or not M.valid(previous) then return nil, 'Select text first; no valid remembered target' end
@@ -157,26 +161,23 @@ function M.apply(capture, replacements)
       vim.api.nvim_buf_set_text(capture.buf, pos[1], pos[2], pos[3].end_row, pos[3].end_col,
         vim.split(text, '\n', { plain = true }))
     end)
-    applied[index] = { start = { pos[1], pos[2] }, text = text }
+    applied[index] = {
+      start = { pos[1], pos[2] }, text = text,
+      prefix = #(target.prefix or ''), replacement = by_id[target.id],
+    }
   end
   -- Extmarks of replacement ranges have changed; pin the inserted text anew.
   local next_targets = {}
   for index, item in ipairs(applied) do
-    local parts = vim.split(item.text, '\n', { plain = true })
-    local er = item.start[1] + #parts - 1
-    local ec = #parts == 1 and item.start[2] + #parts[1] or #parts[#parts]
-    next_targets[index] = mark(capture.buf, item.start[1], item.start[2], er, ec)
+    local parts = vim.split(item.replacement, '\n', { plain = true })
+    local sr, sc = item.start[1], item.start[2] + item.prefix
+    local er = sr + #parts - 1
+    local ec = #parts == 1 and sc + #parts[1] or #parts[#parts]
+    next_targets[index] = mark(capture.buf, sr, sc, er, ec)
   end
   remembered[capture.buf] = { buf = capture.buf, targets = next_targets, block = capture.block }
   return true
 end
 
-function M.remember(capture)
-  remembered[capture.buf] = capture
-end
-
-function M.clear(buf)
-  remembered[buf] = nil
-end
 
 return M

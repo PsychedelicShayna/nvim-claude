@@ -1,5 +1,5 @@
 local M = {}
-local active = {}
+local last_answer
 local function geometry(width, height, win)
   local maxw = math.max(20, vim.o.columns - 4)
   local maxh = math.max(3, vim.o.lines - 5)
@@ -22,13 +22,13 @@ end
 function M.prompt(capture, model, submit)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].buftype = 'nofile'
+  vim.bo[buf].bufhidden = 'wipe'
   vim.bo[buf].filetype = 'markdown'
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, { '' })
   local item = { origin = capture.win }
   item.win = vim.api.nvim_open_win(buf, true, vim.tbl_extend('force', geometry(56, 5, capture.win), {
     title = ' ' .. capture.operation .. ' · ' .. model .. ' (Ctrl-S to send) ', title_pos = 'center',
   }))
-  active[item.win] = item
   local function send()
     if not vim.api.nvim_buf_is_valid(buf) then return end
     local input = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), '\n')
@@ -54,12 +54,14 @@ end
 function M.answer(title, origin)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].buftype = 'nofile'
+  vim.bo[buf].bufhidden = 'hide'
   vim.bo[buf].filetype = 'markdown'
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, { '' })
   local item = { origin = origin, buf = buf, text = '' }
   item.win = vim.api.nvim_open_win(buf, true, vim.tbl_extend('force', geometry(76, 15, origin), {
     title = ' ' .. title .. ' ', title_pos = 'center',
   }))
+  last_answer = item
   local function dismiss() close(item) end
   vim.keymap.set('n', 'q', dismiss, { buffer = buf, nowait = true })
   vim.keymap.set('n', '<Esc>', dismiss, { buffer = buf, nowait = true })
@@ -70,6 +72,20 @@ function M.answer(title, origin)
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(text, '\n', { plain = true }))
     vim.bo[buf].modifiable = false
   end
+end
+
+function M.show_last()
+  if not last_answer or not vim.api.nvim_buf_is_valid(last_answer.buf) then
+    vim.notify('nvim-claude: No retained answer', vim.log.levels.WARN)
+    return
+  end
+  if last_answer.win and vim.api.nvim_win_is_valid(last_answer.win) then
+    vim.api.nvim_set_current_win(last_answer.win)
+    return
+  end
+  last_answer.origin = vim.api.nvim_get_current_win()
+  last_answer.win = vim.api.nvim_open_win(last_answer.buf, true, vim.tbl_extend('force',
+    geometry(76, 15, last_answer.origin), { title = ' Claude result ', title_pos = 'center' }))
 end
 
 function M.message(title, text, origin)

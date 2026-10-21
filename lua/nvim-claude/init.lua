@@ -2,16 +2,15 @@ local M = {}
 local transport = require('nvim-claude.transport')
 local target = require('nvim-claude.target')
 local ui = require('nvim-claude.ui')
-local ns = vim.api.nvim_create_namespace('nvim-claude-status')
 local defaults = {
   replace = '<leader>cc', replace_short = '<leader>c', ask = '<leader>ca', generate = '<leader>ci',
   generate_insert = false, model = '<leader>cm', model_manual = '<leader>cM', clear = '<leader>cC',
   new = '<leader>cn', sticky = '<leader>cS', save = '<leader>cs', info = '<leader>cx', list = '<leader>cl',
 }
-local configured, owned = {}, {}
+local owned = {}
 local model = { model = 'claude-haiku-5-5', effort = 'low', limit = 100000 }
 local state = { sticky = false, last_action = nil, selected_ask = nil, watermarks = 'allow',
-  epoch = 0, busy = false, baselines = {}, capabilities = {}, system = nil }
+  epoch = 0, busy = false, baselines = {}, capabilities = {}, system = nil, session = nil }
 local punctuation = { ['—'] = '-', ['–'] = '-', ['‘'] = "'", ['’'] = "'", ['“'] = '"', ['”'] = '"', ['…'] = '...', ['\194\160'] = ' ' }
 local presets = { 50000,90000,100000,124000,150000,164000,200000,224000,256000,258000,274000,278000,300000,374000,378000,384000,412000,456000,500000,512000,600000,650000,700000,750000,800000,850000,900000,950000,980000 }
 
@@ -66,6 +65,20 @@ local function context(buf)
   end
   return { kind = 'snapshot', revision = rev, text = all }, all
 end
+local function bound_context(capture, data)
+  local limit = type(model.limit) == 'number' and model.limit or nil
+  if not limit or #capture.snapshot <= limit - 25000 or data.context.kind ~= 'snapshot' then return end
+  local lines = vim.api.nvim_buf_get_lines(capture.buf, 0, -1, false)
+  local first = data.targets[1].start[1]
+  local last = data.targets[#data.targets]['end'][1]
+  local from, to = math.max(0, first - 15), math.min(#lines, last + 16)
+  data.context = {
+    kind = 'excerpt', revision = data.context.revision,
+    start_row = from, omitted_before = from, omitted_after = #lines - to,
+    text = table.concat(vim.list_slice(lines, from + 1, to), '\n'),
+  }
+end
+
 local function do_request(op, visual, previous, insert)
   if state.busy then return note('Conversation busy; current draft has not been submitted', vim.log.levels.WARN) end
   local capture, err
@@ -80,7 +93,7 @@ local function do_request(op, visual, previous, insert)
   if not capture then return note(err, vim.log.levels.WARN) end
   if op == 'ask' and not visual and not previous then capture.targets = {} end
   if op ~= 'ask' then state.selected_ask = nil end
-  ui.prompt(capture, model.model, function(instruction, close_prompt)
+  ui.prompt(capture, model.model .. ' · ' .. (state.session and 'continued' or 'new'), function(instruction, close_prompt)
     if state.busy then return note('Conversation busy; draft preserved') end
     close_prompt()
     local data = { operation = op, instruction = instruction }
@@ -88,19 +101,38 @@ local function do_request(op, visual, previous, insert)
       data.document = { id = 'buffer-' .. capture.buf, filetype = vim.bo[capture.buf].filetype }
       data.context, capture.snapshot = context(capture.buf)
       data.targets = target.payload(capture)
+      bound_context(capture, data)
     end
     local epoch = state.epoch
     state.busy = true
     local update = ui.answer(op == 'ask' and 'Answer (streaming)' or 'Edit result (streaming)', capture.win)
     state.partial = update
-    rpc('turn', { input = data }, function(failure, result)
+    local retried = false
+    local function finish(failure, result)
+      if epoch ~= state.epoch then return end
+      if failure and not retried and data.document and
+        (failure:find('Context baseline unavailable', 1, true) or
+         failure:find('Compaction cleared document baselines', 1, true)) then
+        retried = true
+        if not target.valid(capture) then
+          failure = 'Target changed before snapshot retry'
+        else
+          capture.snapshot = table.concat(vim.api.nvim_buf_get_lines(capture.buf, 0, -1, false), '\n')
+          local revision = tostring(vim.api.nvim_buf_get_changedtick(capture.buf)) .. ':' .. #capture.snapshot
+          data.context = { kind = 'snapshot', revision = revision, text = capture.snapshot }
+          data.targets = target.payload(capture)
+          bound_context(capture, data)
+          return rpc('turn', { input = data }, finish)
+        end
+      end
       state.busy = false
       state.partial = nil
-      if epoch ~= state.epoch then return end
       if failure then return update('Request failed: ' .. failure) end
       if not result then return update('Bridge returned no result') end
+      state.session = result.session
       if data.document then
-        state.baselines[capture.buf] = { revision = data.context.revision, text = capture.snapshot }
+        state.baselines[capture.buf] = data.context.kind == 'excerpt' and nil or
+          { revision = data.context.revision, text = capture.snapshot }
       end
       local text = result.text or ''
       if op == 'ask' then
@@ -124,7 +156,8 @@ local function do_request(op, visual, previous, insert)
       if not applied then return update('Result not applied: ' .. reason .. '\n\n' .. text) end
       state.last_action = op
       update('Applied ' .. op .. ' to the captured target.')
-    end)
+    end
+    rpc('turn', { input = data }, finish)
   end)
 end
 
@@ -165,6 +198,7 @@ local function action(name, args)
       and state.selected_ask and state.selected_ask.buf == vim.api.nvim_get_current_buf() and target.valid(state.selected_ask))
     return do_request('ask', args.visual, previous, false)
   end
+  if name == 'result' then return ui.show_last() end
   if name == 'cancel' then
     state.epoch = state.epoch + 1
     state.busy = false
@@ -208,7 +242,24 @@ local function action(name, args)
   end
   if name == 'info' then
     return rpc('info', {}, function(err, info)
-      if not err then ui.message('Claude session info', vim.inspect(info) .. '\nCache lifetime: estimated, not a live cache entry.\nSubscription TTL ~1h; API/credits ~5m.', vim.api.nvim_get_current_win()) end
+      if err then return end
+      local account = info.auth or {}
+      local usage = info.usage or {}
+      local parts = {
+        'Model: ' .. tostring(info.config.model),
+        'Effort: ' .. tostring(info.config.effort),
+        'Local budget: ' .. tostring(info.config.limit == vim.NIL and 'model default' or info.config.limit or 'model default'),
+        'Hard ceiling: unverified; UTF-8 byte estimate + 20k runtime reserve',
+        'Context occupancy: ' .. tostring(info.occupancy_estimate) .. ' tokens (runtime report)',
+        'Cumulative usage: ' .. vim.inspect(info.cumulative or {}),
+        'Latest turn usage: ' .. vim.inspect(usage),
+        'Session: ' .. tostring(info.session or 'new'),
+        'Saved: ' .. tostring(info.saved) .. '; sticky: ' .. tostring(info.sticky),
+        'SDK: ' .. tostring(info.sdk) .. '; Claude Code: ' .. tostring(info.cli),
+        'Authentication: ' .. tostring(account.apiProvider or 'unknown') .. ' / ' .. tostring(account.subscriptionType or 'unknown'),
+        'Cache TTL: estimated ' .. (account.subscriptionType and '1h subscription' or '5m API/credits') .. '; not a live cache guarantee',
+      }
+      ui.message('Claude session info', table.concat(parts, '\n'), vim.api.nvim_get_current_win())
     end)
   end
   if name == 'list' then
@@ -219,7 +270,13 @@ local function action(name, args)
       end }, function(item)
         if not item then return end
         rpc('resume', { session = item.id }, function(failure, result)
-          if not failure then state.epoch = result.epoch; state.baselines = {}; model = result.model; note('Resumed ' .. item.id) end
+          if not failure then
+            state.epoch = result.epoch
+            state.baselines = {}
+            state.session = item.id
+            model = result.model
+            note('Resumed ' .. item.id)
+          end
         end)
       end)
     end)
@@ -227,7 +284,7 @@ local function action(name, args)
   rpc(name, {}, function(err, result)
     if not err and (name == 'new' or name == 'clear') then
       state.epoch = result.epoch
-      state.baselines = {}; state.selected_ask = nil; state.last_action = nil
+      state.baselines = {}; state.selected_ask = nil; state.last_action = nil; state.session = nil
       note('Conversation ' .. name)
     end
   end)
@@ -240,10 +297,13 @@ function M.setup(opts)
     if method == 'partial' and state.partial and params.epoch == state.epoch then
       state.partial(present(params.text or ''))
     end
+    if method == 'status' and state.partial and params.epoch == state.epoch then
+      state.partial(params.state == 'compacting' and 'Compacting conversation before this request...' or params.state)
+    end
     if method == 'capabilities' then state.capabilities = params end
   end)
   pcall(vim.api.nvim_del_user_command, 'NvClaude')
-  local commands = { 'ask','replace','generate','cancel','new','clear','save','sticky','compact','list','info','model','login','watermarks','system' }
+  local commands = { 'ask','replace','generate','cancel','result','new','clear','save','sticky','compact','list','info','model','login','watermarks','system' }
   vim.api.nvim_create_user_command('NvClaude', function(spec)
     local parts = vim.split(spec.args, '%s+', { trimempty = true })
     local sub = parts[1] or 'ask'
