@@ -59,6 +59,7 @@ class Bridge:
         self.sticky = False
         self.baselines = {}
         self.metadata = {}
+        self.connection_usage = {}
         self.occupancy = None
         self.ttl = 300
         self.shutting_down = False
@@ -106,6 +107,7 @@ class Bridge:
             env=runtime_env,
         )
         self.client = ClaudeSDKClient(options)
+        self.connection_usage = {}
         try:
             await self.client.connect()
             self.metadata = await self.client.get_server_info() or {}
@@ -130,6 +132,9 @@ class Bridge:
 
     async def collect(self, prompt, compact=False):
         self.check_cancelled()
+        if not self.metadata.get('account', {}).get('subscriptionType'):
+            raise ValueError('Runtime has not confirmed subscription authentication. '
+                             'Use :NvClaude login; this plugin will not fall back to API billing.')
         await self.client.query(prompt)
         partial = ''
         final = ''
@@ -163,7 +168,16 @@ class Bridge:
                     raise ValueError(message.result or ('Runtime failed: ' + message.subtype))
                 completed = True
                 self.store.current['started'] = True
-                self.store.current['usage'] = message.model_usage or message.usage or {}
+                totals = self.store.current['usage']
+                for model, usage in (message.model_usage or {}).items():
+                    previous = self.connection_usage.get(model, {})
+                    total = totals.setdefault(model, {})
+                    for key in ('inputTokens', 'outputTokens', 'cacheReadInputTokens',
+                                'cacheCreationInputTokens', 'costUSD', 'webSearchRequests',
+                                'thinkingTokens'):
+                        if key in usage:
+                            total[key] = total.get(key, 0) + max(0, usage[key] - previous.get(key, 0))
+                    self.connection_usage[model] = dict(usage)
                 self.store.write()
         self.check_cancelled()
         if not completed:

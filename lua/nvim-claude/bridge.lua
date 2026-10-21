@@ -13,14 +13,21 @@ end
 
 local function frame(message)
   local text = vim.json.encode(message)
+  if #text > 16 * 1024 * 1024 then return nil end
   return 'Content-Length: ' .. #text .. '\r\n\r\n' .. text
 end
 
 local function transmit(method, params, callback)
   M.next_id = M.next_id + 1
   local id = M.next_id
-  M.pending[id] = callback or function(_, err) if err then notify(err, vim.log.levels.ERROR) end end
-  vim.fn.chansend(M.job, frame({jsonrpc = '2.0', id = id, method = method, params = params or {}}))
+  callback = callback or function(_, err) if err then notify(err, vim.log.levels.ERROR) end end
+  local encoded = frame({jsonrpc = '2.0', id = id, method = method, params = params or {}})
+  if not encoded then
+    callback(nil, 'Request exceeds the 16 MiB bridge frame limit; reduce the explicit buffer context')
+    return id
+  end
+  M.pending[id] = callback
+  vim.fn.chansend(M.job, encoded)
   return id
 end
 
@@ -81,15 +88,26 @@ function M.ensure(update, callback)
   M.starting = true
   local args = {M.options.python, root .. '/python/provision.py', M.options.data_dir}
   if update then args[#args + 1] = '--update' end
-  local stdout, stderr = {}, {}
+  local stdout, stderr, progress = {}, '', ''
   local job = vim.fn.jobstart(args, {
-    stdout_buffered = true, stderr_buffered = true,
+    stdout_buffered = true,
     on_stdout = function(_, lines) stdout = lines end,
-    on_stderr = function(_, lines) stderr = lines end,
+    on_stderr = function(_, lines)
+      local chunk = table.concat(lines, '\n')
+      stderr = stderr .. chunk
+      progress = progress .. chunk
+      while progress:find('\n', 1, true) do
+        local finish = progress:find('\n', 1, true)
+        local text = progress:sub(1, finish - 1)
+        progress = progress:sub(finish + 1)
+        if text:match('^Waiting for runtime') or text:match('^Creating private')
+            or text:match('^Installing latest') then notify(text) end
+      end
+    end,
     on_exit = function(_, code)
       if code ~= 0 then
         M.starting = false
-        local err = 'Setup failed. Check Python/venv/network, then retry.\n' .. table.concat(stderr, '\n')
+        local err = 'Setup failed. Check Python/venv/network, then retry.\n' .. stderr
         local queue = M.queue
         M.queue = {}
         for _, request in ipairs(queue) do request[3](nil, err) end

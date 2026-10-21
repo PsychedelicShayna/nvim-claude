@@ -262,6 +262,8 @@ function M.setup(opts)
   if vim.fn.has('nvim-0.11') == 0 then error('nvim-claude requires Neovim 0.11+') end
   state.config = vim.tbl_extend('force', state.config, opts.model and {model = opts.model} or {},
     opts.effort and {effort = opts.effort} or {}, opts.context_limit_tokens and {context_limit_tokens = opts.context_limit_tokens} or {})
+  if opts.context_limit_tokens == false then state.config.context_limit_tokens = vim.NIL end
+  if opts.effort == false then state.config.effort = vim.NIL end
   bridge.setup({python = opts.python or 'python3',
     data_dir = opts.data_dir or vim.fn.stdpath('data') .. '/nvim-claude',
     state_dir = opts.state_dir or vim.fn.stdpath('state') .. '/nvim-claude', config = state.config}, event)

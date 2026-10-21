@@ -23,8 +23,9 @@ local function mark(buf, s, e, extra)
   serial = serial + 1
   local item = {id = 'target-' .. serial, prefix = '', suffix = ''}
   for k, v in pairs(extra or {}) do item[k] = v end
+  local empty = s[1] == e[1] and s[2] == e[2]
   item.mark = api.nvim_buf_set_extmark(buf, ns, s[1], s[2], {
-    end_row = e[1], end_col = e[2], right_gravity = false, end_right_gravity = true,
+    end_row = e[1], end_col = e[2], right_gravity = not empty, end_right_gravity = empty,
     hl_group = 'Visual', undo_restore = false, invalidate = true,
   })
   item.original = text_at(buf, s, e)

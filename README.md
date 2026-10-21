@@ -105,6 +105,8 @@ Examples:
 | `claude-haiku-5-5` | `claude-haiku-5-5` | retained | retained if supported |
 
 `[limit=100k]` is an unambiguous local ceiling. Decimal `k` and `m` mean 1,000 and 1,000,000. Only recognized final effort suffixes are parsed; other colons remain part of the runtime ID. Recognized native `[1m]` variants remain in the model ID. Unknown nonnumeric suffixes remain untouched.
+Raw `model`, `effort`, and `context_limit_tokens` setup options bypass expression parsing. `context_limit_tokens = false` explicitly selects uncapped model-default operation; `effort = false` leaves effort to the runtime. Neither is selected automatically.
+
 
 Picker budgets: 50k, 90k, 100k, 124k, 150k, 164k, 200k, 224k, 256k, 258k, 274k, 278k, 300k, 374k, 378k, 384k, 412k, 456k, 500k, 512k, 600k, 650k, 700k, 750k, 800k, 850k, 900k, 950k, 980k, and model default.
 
