@@ -43,6 +43,16 @@ assert(current()[2] == 'ab Qxy', vim.inspect(current()))
 vim.cmd('undo')
 assert(vim.deep_equal(current(), { '\tab', 'ab\txy' }), vim.inspect(current()))
 assert(not targets.previous(b, false), 'Undo must invalidate the replaced target')
+vim.api.nvim_buf_set_lines(b, 0, -1, false, { '界ab', '界cd' })
+vim.api.nvim_win_set_cursor(0, { 1, 0 })
+keys('<C-v>j')
+local wide = targets.capture('replace', true)
+keys('<Esc>')
+assert(targets.apply(wide, {
+  { id = 'target-0', text = 'Q' },
+  { id = 'target-1', text = 'Q' },
+}))
+assert(vim.deep_equal(current(), { ' Qab', ' Qcd' }), vim.inspect(current()))
 local backend = require('nvim-claude.backend')
 local original_call, original_input = backend.call, vim.ui.input
 local captured

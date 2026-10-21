@@ -321,7 +321,10 @@ function M.command(args)
     notify('After closing Neovim, run ' .. vim.fn.stdpath('data') ..
       '/nvim-claude/venv/bin/python -m pip install --upgrade claude-agent-sdk; restart Neovim')
   elseif vim.tbl_contains({ 'clear', 'new', 'save', 'compact', 'cancel' }, name) then
-    if name == 'cancel' then active = nil end
+    if name == 'cancel' then
+      active = nil
+      backend.discard_pending_request()
+    end
     action(name, {})
   else notify('Use :NvClaude ' .. table.concat(actions, '|'), vim.log.levels.WARN) end
 end

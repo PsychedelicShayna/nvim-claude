@@ -51,8 +51,10 @@ local function start()
       input:close(); output:close(); errors:close(); proc:close()
       local pending = M.callbacks
       M.callbacks = {}
-      for _, cb in pairs(pending) do cb(nil, 'Bridge exited (' .. code .. ')') end
-      if was_ready then notify('Python bridge exited (' .. code .. ')', vim.log.levels.ERROR) end
+      if not M.stopping then
+        for _, cb in pairs(pending) do cb(nil, 'Bridge exited (' .. code .. ')') end
+        if was_ready then notify('Python bridge exited (' .. code .. ')', vim.log.levels.ERROR) end
+      end
     end)
   end)
   if not proc then
@@ -61,6 +63,7 @@ local function start()
     notify('Could not launch Python bridge', vim.log.levels.ERROR)
     return
   end
+  M.stopping = false
   M.process, M.input = proc, input
   errors:read_start(function(_, chunk) if chunk then notify(chunk, vim.log.levels.ERROR) end end)
   output:read_start(function(err, chunk)
@@ -90,7 +93,7 @@ local function start()
   M.starting = false
   local pending = M.pending
   M.pending = {}
-  for _, fn in ipairs(pending) do fn() end
+  for _, item in ipairs(pending) do item.dispatch() end
 end
 
 local function provision()
@@ -102,7 +105,7 @@ local function provision()
     if ok then start() else
       notify('Setup failed: ' .. (err or 'unknown error'), vim.log.levels.ERROR)
       local pending = M.pending; M.pending = {}
-      for _, fn in ipairs(pending) do fn(false, err) end
+      for _, item in ipairs(pending) do item.dispatch(false, err) end
     end
   end
   if vim.fn.executable(python) == 1 and uv.fs_stat(ready_marker) then finish(true); return end
@@ -171,11 +174,18 @@ function M.call(method, params, callback)
     return id
   end
   if M.ready then return dispatch() end
-  M.pending[#M.pending + 1] = dispatch
+  M.pending[#M.pending + 1] = { method = method, dispatch = dispatch }
   provision()
 end
 
+function M.discard_pending_request()
+  for index = #M.pending, 1, -1 do
+    if M.pending[index].method == 'request' then table.remove(M.pending, index) end
+  end
+end
+
 function M.stop()
+  M.stopping = true
   if M.process then M.process:kill('sigterm') end
   for job in pairs(jobs) do job:kill('sigterm') end
   if M.install_lock then uv.fs_unlink(M.install_lock); M.install_lock = nil end
