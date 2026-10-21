@@ -27,7 +27,7 @@ The intended starting model is `claude-haiku-5-5`, with a 100,000-token prompt b
 
 The official name is **Claude Agent SDK**, singular. Anthropic provides Python and TypeScript packages. The Python SDK's source is public and MIT-licensed; that does not make the underlying Claude Code runtime open source. Both SDKs use Claude Code, whose terms and distribution are separate. I prefer Python, so that is the backend language.[2]
 
-Lua will communicate with a local Python process over a WebSocket. Python dependencies will live in a plugin-managed virtual environment. The SDK currently requires Python 3.10 or later, and bundles a Claude Code executable. We will pin a tested SDK/runtime combination rather than assume any installed version supports the required model and features.
+Lua will communicate with a local Python bridge process. The proposed transport is stdio RPC, similar to an LSP; a WebSocket is an alternative, not a requirement. On first use, the plugin will use system Python to create its own virtual environment, install the latest `claude-agent-sdk` with pip, and run the bridge with that environment's Python. The SDK currently requires Python 3.10 or later and bundles its own Claude Code executable, so no separate Claude Code installation is required. The plugin will reuse the environment after setup and report the installed SDK/runtime versions for diagnosis.
 
 ## Authentication and billing
 
@@ -35,7 +35,7 @@ The SDK is an official integration mechanism, but that is not a blanket guarante
 
 Anthropic's SDK overview currently says: "Unless previously approved, Anthropic does not allow third party developers to offer claude.ai login or rate limits for their products, including agents built on the Claude Agent SDK." It directs integrations to API-key authentication. That is relevant to distributing this plugin; it does not by itself settle every case of personal local use.[3]
 
-The desired personal workflow is to use the installed Claude Code authentication where supported. We still need to verify that path with the chosen runtime and account. If a login command is needed, it should delegate to Claude Code's official authentication flow. The plugin should not implement its own OAuth client or copy and maintain refresh tokens.
+The desired personal workflow is to reuse existing Claude Code authentication where supported, including when running the SDK's bundled executable. We still need to verify that path with the chosen runtime and account. If a login command is needed, it should delegate to the bundled runtime's official authentication flow. The plugin should not implement its own OAuth client or copy and maintain refresh tokens.
 
 API-key authentication is a documented SDK path and bills as API usage. The plugin must make the active authentication/billing mode visible when known, report uncertainty when it is not known, and never silently switch from subscription credentials to a paid API key.
 
