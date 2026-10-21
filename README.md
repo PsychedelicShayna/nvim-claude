@@ -1,101 +1,123 @@
 # nvim-claude
 
-A personal Neovim plugin for quick, deliberate collaboration with Claude while editing text. Select something, open a small prompt float near the cursor, say what you want, and keep writing.
+Cursor-local collaboration with Claude in Neovim. Select text, open a small prompt, enter an instruction, and keep editing while the response runs. Ask answers stay in a separate float. Replacement and generation apply completed output to the captured target, not the current cursor.
 
-**This is the shared benchmark launcher, not a working plugin.** The [specification](SPEC.md) defines the common behavior for independent implementations. Start a fresh harness in the `benchmark` checkout, select the model and effort, and say **implement**. Root AGENTS.md points it to the [complete run instructions](docs/agents/benchmark.md), including a separate model/harness worktree and unmerged candidate delivery.
+This is the independent **Sol 6.1 low / NeoPi** benchmark candidate. It is not merged into nightly or master. The shared behavior contract is [SPEC.md](SPEC.md), and the run's evidence is in [docs/agents/benchmark-result.md](docs/agents/benchmark-result.md).
 
-The first four runs are GPT-6 Astra and Sol 6.1, each in NeoPi and Codex CLI. Each candidate implements the entire plugin. The owner installs its published branch through lazy.nvim, compares it with the others, and chooses what to integrate later. Candidate remote branches remain available as benchmark records; their local worktrees are disposable. Do not implement in this shared launcher.
+## Install
 
-## What it is
+Requirements: Unix, Neovim 0.12+, Python 3.10+ with `venv` and pip, and network access for first-use installation. Verified here with Neovim 0.12.4 and Python 3.14.6. Older Python versions are the SDK's declared minimum, not versions exercised in this run.
 
-This is not a chat sidebar or an autonomous coding agent. I want four things:
+```lua
+{
+  "PsychedelicShayna/nvim-claude",
+  branch = "experimental/benchmark-sol-6-1-low-neopi-20261021-a7c9",
+  main = "nvim-claude",
+  opts = {},
+}
+```
 
-1. Claude's opinion on a selection.
-2. A quick general question, with follow-ups when useful.
-3. A transformation of selected text, such as formatting a list or cleaning up code.
-4. New text inserted at the cursor, such as a sentence continuation or generated code.
+Restart Neovim when switching candidate branches. `setup()` registers commands and mappings immediately. It does not install packages, start Claude, or require authentication. The first backend action asynchronously creates a private Python environment and installs the latest released `claude-agent-sdk`, including its bundled CLI. No separate Claude Code installation, private config, or `inf` executable is needed.
 
-The reference is the inline workflow in my personal Neovim configuration. I press `<leader>i` to generate at the cursor or replace a visual selection, and `<leader>I` to choose a model. That interaction already works well. Its implementation lives in `lua/usercmds/nervgen.lua`, uses `:NervGen`, and calls my unreleased `inf` CLI. This plugin will keep the small, cursor-local interaction and replace that backend with the Python Claude Agent SDK.
+The venv is under `stdpath("data")/nvim-claude/venv`; manifests are under `stdpath("state")/nvim-claude/conversations`. Runtime transcripts use Claude Code's normal storage, with exact session IDs recorded by the plugin. Installation is serialized with an OS file lock. `:NvClaude update` explicitly upgrades the existing environment. Failed installation never writes its ready marker.
 
-You choose when to invoke Claude, what it sees, and whether to continue the current conversation or start fresh. Claude gets no editing tools. Neovim applies its output to the selected range or insertion point; answers to questions stay in a float.
+The latest dependency resolved to SDK **0.2.170**, bundled CLI **2.1.306**. Because a newer runtime could change hidden input overhead, capped model requests fail closed on unverified CLI versions. Menus, login, and diagnostics still work. Updating the SDK is explicit; the version guard is not an SDK pin.
 
-I have RSI, repetitive strain injury. Reducing the number of keys between a thought and an edit is the point. The plugin will live separately from my configuration so other people can use it without installing my entire setup.
+## Use
 
-## Why Claude, and why Python?
+The prompt opens near the cursor in Insert mode. Enter inserts a newline. Ctrl-S submits in Insert or Normal mode; Enter submits in Normal mode. Escape leaves Insert mode, then a second Escape dismisses the prompt. These are buffer-local mappings.
 
-I already have Codex in my configuration, and I am developing a broader project that will eventually support multiple providers. In the meantime, I want Haiku 5.5 for fast text manipulation, reformatting, cleanup, and generation. I also find the idea of having Astra build a Claude integration funny.
-
-The intended starting model is `claude-haiku-5-5`, with a 100,000-token prompt budget. Anthropic currently documents higher per-token pricing for Haiku 5.5 requests whose prompts exceed 100,000 tokens. Cached input counts toward that boundary too. Staying under it matters; caching alone does not avoid the higher tier. Subscription usage accounting is not necessarily identical to API pricing.[1]
-
-The official name is **Claude Agent SDK**, singular. Anthropic provides Python and TypeScript packages. The Python SDK's source is public and MIT-licensed; that does not make the underlying Claude Code runtime open source. Both SDKs use Claude Code, whose terms and distribution are separate. I prefer Python, so that is the backend language.[2]
-
-Lua will communicate with a local Python bridge using JSON-RPC over stdio, with LSP-style framing. On first use, the plugin will use system Python to create its own virtual environment, install the latest `claude-agent-sdk` with pip, and run the bridge with that environment's Python. The SDK currently requires Python 3.10 or later and bundles its own Claude Code executable, so no separate Claude Code installation is required. The plugin will reuse the environment after setup and report the installed SDK/runtime versions for diagnosis.
-
-## Authentication and billing
-
-The SDK is an official integration mechanism, but that is not a blanket guarantee about account restrictions, subscription eligibility, or billing.
-
-Anthropic's SDK overview currently says: "Unless previously approved, Anthropic does not allow third party developers to offer claude.ai login or rate limits for their products, including agents built on the Claude Agent SDK." It directs integrations to API-key authentication. That is relevant to distributing this plugin; it does not by itself settle every case of personal local use.[3]
-
-The desired personal workflow is to reuse existing Claude Code authentication where supported, including when running the SDK's bundled executable. We still need to verify that path with the chosen runtime and account. If a login command is needed, it should delegate to the bundled runtime's official authentication flow. The plugin should not implement its own OAuth client or copy and maintain refresh tokens.
-
-API-key authentication is a documented SDK path and bills as API usage. The plugin must make the active authentication/billing mode visible when known, report uncertainty when it is not known, and never silently switch from subscription credentials to a paid API key.
-
-## Installation acceptance
-
-The implementation must install by repository name and branch through a plugin manager such as lazy.nvim on another supported Neovim installation. No private configuration, local worktree path, or preinstalled Claude Code is required.
-
-The shared Lua entry point is `require("nvim-claude").setup(opts)`. lazy.nvim uses `main = "nvim-claude"` and `opts = {}` to invoke setup. Commands and the default bindings below must appear before authentication succeeds. Override individual mappings through `opts.keys`, disable one with `false`, or set `keys = false` to disable all plugin mappings. The [specification](SPEC.md#installable-plugin-deliverable) defines the option names and portability checks.
-
-This branch still contains the specification, not an installable implementation. Each completed benchmark candidate must replace that notice with truthful installation instructions and a lazy.nvim example naming its actual published branch. The owner can switch branches to compare candidates without promoting any of them to master.
-
-## Specified usage
-
-The baseline uses a `<leader>c` namespace so it can coexist with my current `<leader>i` mappings. Mappings will be configurable. Keeping the familiar `i`/`I` interaction is also an option; installing the plugin must not overwrite my existing mappings without an explicit configuration choice.
-
-Here, `x` means Visual mode, `n` Normal mode, and `i` Insert mode. Mode-specific insert behavior and selection tracking are defined in the spec.
-
-| Mode | Mapping | Action |
+| Modes | Default | Action |
 | --- | --- | --- |
-| x | `<leader>c` | Short form of selection replacement. See the timing caveat below. |
-| x | `<leader>cc` | Replace the selection using the instruction entered in a cursor-local float. |
-| n | `<leader>c`, `<leader>cc` | Reuse the previous valid selection in this buffer for replacement. Report when there is no valid target. |
-| x | `<leader>ca` | Ask about the selection. Stream the answer into a float without changing the source buffer. |
-| n | `<leader>ca` | Continue the last selected-ask target when it is still valid in this buffer and no replacement or generation has intervened. Otherwise ask generally. |
-| n, i | `<leader>ci` | Generate text at the captured insertion point. Insert-mode mapping is opt-in so ordinary typing is not delayed by a leader prefix. |
-| n | `<leader>cm` | Choose a model from the catalogue exposed by the runtime, then its supported effort and the plugin's context limit. |
-| n | `<leader>cM` | Enter a model expression manually. |
-| n | `<leader>cC` | `:NvClaude clear`: discard the active conversation's working context. |
-| n | `<leader>cn` | `:NvClaude new`: start a separate conversation. |
-| n | `<leader>cS` | `:NvClaude sticky`: toggle automatic persistence for conversations. |
-| n | `<leader>cs` | `:NvClaude save`: retain the current conversation for later resumption. |
-| n | `<leader>cx` | `:NvClaude info`: show context usage, model, persistence, and cache information in a centered float. |
-| n | `<leader>cl` | `:NvClaude list`: pick a saved conversation to resume. |
+| Normal, Visual | `<leader>cc`, `<leader>c` | Replace the selected or remembered target |
+| Normal, Visual | `<leader>ca` | Ask generally, about a selection, or follow up on the last selected ask |
+| Normal | `<leader>ci` | Generate before the captured cursor character |
+| Insert | disabled | Optional insertion at the actual insertion boundary |
+| Normal | `<leader>cm` | Runtime-announced model, effort, then context ceiling |
+| Normal | `<leader>cM` | Manual model expression |
+| Normal | `<leader>cC` | Clear working conversation, retain saved checkpoints |
+| Normal | `<leader>cn` | Start a new conversation |
+| Normal | `<leader>cS` | Toggle sticky persistence |
+| Normal | `<leader>cs` | Save current conversation and future completed turns |
+| Normal | `<leader>cx` | Information float |
+| Normal | `<leader>cl` | Saved conversation picker |
 
-All actions will also be available through `:NvClaude`, with command completion. `:NvClaude compact` requests compaction manually; `:NvClaude cancel` interrupts the active request without applying a partial edit.
+Normal replacement without a valid target reports that a selection is needed. After replacement, the remembered target is the newly inserted text. Normal ask continues a selected-ask chain only in the same buffer, while the target remains valid and no replacement or generation has intervened. Model menus do not end the chain. `:NvClaude ask` is always general; `:NvClaude ask previous` explicitly asks about the previous selected-ask target.
 
-### Mapping timing
+Mappings use native prefix resolution. `<leader>c` waits while a longer mapping remains possible; the plugin does not change `timeoutlen` or WhichKey. Existing user mappings are preserved unless the corresponding key option is explicitly supplied. Repeated setup removes only mappings still owned by this plugin.
 
-Native Neovim mappings cannot distinguish a short mapping merely by how quickly you typed it. If `<leader>c` is both an action and a prefix for `<leader>cc`, Neovim normally waits for another key or the mapping timeout. `'timeoutlen'` controls that wait. WhichKey's display delay is a separate setting.[4]
+```lua
+opts = {
+  keys = {
+    replace = "<leader>rr",
+    replace_short = false,
+    generate = "<leader>i",
+    generate_insert = "<C-g>",
+    model = "<leader>I",
+  },
+}
+-- keys = false disables all plugin mappings.
+-- Every key option accepts a replacement string or false.
+```
 
-The baseline uses native prefix behavior, with `<leader>cc` as the unambiguous action. It does not install a custom fast-tap dispatcher or change global mapping timeouts. The existing `<leader>i` interaction remains the usability reference.
+Key option names are `replace`, `replace_short`, `ask`, `generate`, `generate_insert`, `model`, `model_manual`, `clear`, `new`, `sticky`, `save`, `info`, and `list`.
 
-Normal-mode `<leader>ca` uses the last content action and target validity, not typing speed, to distinguish a selected-ask follow-up from a general question. `:NvClaude ask` always asks generally; `:NvClaude ask previous` explicitly reuses the selected-ask target or reports that none is available. These are the specification's deterministic replacements for the original draft's timing-dependent meanings.
+Ask output streams without taking focus away from your source. Use ordinary window navigation to enter the answer. `q` or Escape in Normal mode closes an answer and returns to its origin. Closing it does not cancel the request. `:NvClaude answer` reopens the retained result, including the current stream. You can select answer text and explicitly ask about or replace it.
 
-### Models, effort, and context limits
+Extmarks track the source buffer and target. The plugin verifies target contents again before applying. A stale, deleted, or nonmodifiable target leaves the result in a float instead of overwriting your changes. Characterwise, reversed, linewise, and native virtual-cell block selections use Neovim's own region semantics. Partial tabs preserve unselected cells as spaces. Block replacements remain on their rows and apply bottom-up as one undo step. Edit JSON is validated before any buffer mutation. Whitespace is not trimmed; empty text is an intentional deletion.
 
-The intended manual syntax is:
+## Commands
+
+`:NvClaude` provides completion. With no argument, it opens a general ask prompt.
+
+| Command | Behavior |
+| --- | --- |
+| `ask [previous]`, `replace`, `generate` | Open an operation prompt |
+| `cancel` | Interrupt the active request and reject late output |
+| `answer` | Reopen the most recent answer or retained failure result |
+| `model [manual\|expression]` | Picker, manual input, or direct model expression |
+| `new`, `clear` | Detach working context; do not delete saved checkpoints |
+| `save` | Persist this conversation, including subsequent completed turns |
+| `sticky [on\|off]` | Automatically save current and future conversations |
+| `compact` | Run actual `/compact`; require a runtime completion boundary |
+| `list`, `resume <id>` | Pick or resume an exact saved SDK session |
+| `info` | Model, effective context, usage, retention, cache estimate, versions, billing |
+| `system modify` | Edit the session-local system prompt in a scratch buffer; `:write` applies it |
+| `system default` | Restore the shipped prompt |
+| `watermarks allow\|replace\|remove` | Output punctuation policy |
+| `login` | Open the bundled CLI's official `auth login` in a terminal |
+| `update` | Explicitly upgrade the private SDK environment |
+
+A second submission during a turn retains its prompt draft and reports busy. New, clear, and resume cancel an active edit before switching context. Model and prompt changes run between turns. Prompt changes reconnect the same SDK session with `snapshot=False`, keeping raw history and making the new prompt effective on the next request. This can invalidate provider prefix caching.
+
+## Models and budgets
+
+The initial configuration is:
+
+```lua
+opts = {
+  model_config = {
+    model = "claude-haiku-5-5",
+    effort = "low",
+    context_limit_tokens = 100000,
+  },
+}
+```
+
+Thinking is disabled for this quick-edit workflow. Runtime-announced effort choices remain separate from thinking mode. Manual model IDs remain usable when absent from discovery, but their effort support is labeled unverified. There is no fallback model.
+
+Examples:
 
 ```text
 claude-haiku-5-5[100k]:low
 claude-opus-4-6[1m][500k]:high
+claude-opus-4-6[1m]:high
+vendor:model[limit=90k]
 ```
 
-In the first example, the model is `claude-haiku-5-5`, the requested effort is `low`, and `100k` is the plugin's context budget. In the second, `claude-opus-4-6[1m]` is the runtime model selector, while `500k` is the plugin budget. The plugin must not pass its local budget suffix to the SDK as part of the model ID.
+The last recognized effort suffix is parsed separately. The last numeric bracket is a local budget when there are two. Recognized native selectors remain part of the runtime model ID; a lone recognized native selector chooses model-default local budgeting. `[limit=100k]` is always a local budget. Unrecognized nonnumeric suffixes are preserved. A plain model ID retains the current local budget and supported effort. Separate `model_config` fields bypass shorthand parsing.
 
-A single recognized model-variant suffix such as `[1m]` must remain intact. The parsing rules, including an unambiguous explicit-limit spelling, are in the spec. Effort support is model-dependent; the UI must not advertise unsupported levels as though they work.
-
-The requested context presets are:
+The picker offers model default and these decimal-token presets:
 
 ```text
 50k, 90k, 100k, 124k, 150k, 164k, 200k, 224k, 256k,
@@ -104,65 +126,34 @@ The requested context presets are:
 950k, 980k
 ```
 
-There should also be a "model default" choice. A local budget cannot enlarge a model's actual context window. Automatic compaction is not, by itself, proof that no request can exceed a chosen pricing boundary. The implementation must account for the next prompt, system instructions, context, and compaction requests before promising a hard 100k ceiling.
+The dispatch guard bounds text with **UTF-8 bytes**, not a characters-divided-by-four estimate. It includes the system prompt, current SDK transcript chain, the serialized next request, and an 8,192-token runtime allowance. Tools, skills, plugins, external memory, and project settings are disabled for ordinary editing turns. Runtime context metadata is checked for unexpected attached context. The installed 2.1.306 runtime's observed overhead fits this allowance; other versions are refused before a capped model request.
 
-## Conversations and caching
+An additional 8,192 tokens are reserved for output within the runtime-reported window. With the default 100k runtime compaction window, this makes the effective prompt ceiling **91,808**, conservatively below the requested 100k. `info` reports the actual last prompt count separately from the conservative bound. This deliberately trades available context for a defensible ceiling. It does not promise that a provider's future tokenizer or hidden runtime behavior can never change.
 
-Follow-ups should work. After "make this more formal," I should be able to ask "less stiff" without restating the task or selecting everything again.
+The bridge compacts before the next bound crosses 65% of the effective ceiling. It checks the compaction request's bound too. Compaction temporarily reconnects with native commands enabled, still without model tools, then returns to ordinary command-disabled editing. A successful boundary invalidates buffer baselines. Compaction is lossy and costs tokens. If it is too late to compact within the cap, the request is refused rather than silently increasing the cap.
 
-Three different things are involved:
+Initial context is a snapshot. Later context uses an explicit unchanged marker or an append-only unified diff from the last accepted baseline, preferring a snapshot when smaller. After uncertain delivery, resumption, or compaction, the next context is fresh. A large local task may receive an explicitly incomplete excerpt around its intact target; missing regions are marked unknown. Set `context = "full"` to refuse oversized whole-file context rather than excerpt it. Targets and mandatory instructions are never truncated.
 
-- **Conversation history** is what the SDK sends back to the model on later turns.
-- **Prompt caching** lets the provider reuse computation for an unchanged prefix. A cache miss changes cost and latency, not whether history exists.
-- **Persistence** determines whether the plugin retains a conversation for later resumption.
+## Authentication and persistence
 
-Current Claude Code documentation says main Agent SDK turns normally request a one-hour cache TTL within included subscription usage, and five minutes with usage credits, an API key, or a cloud provider. Overrides and runtime versions can change this. Direct API caching also supports both five-minute and one-hour TTLs.[5]
+The plugin uses the bundled CLI's existing supported authentication. This run exercised an existing Claude Max session without copying credentials. `:NvClaude login` delegates to the official login flow. Default `billing = "subscription"` suppresses API-key and cloud-provider credentials in the child environment so they cannot become a silent paid fallback. To deliberately use API credentials, set `billing = "api"`; that is a billing decision, not an authentication repair.
 
-The intended ephemeral policy is to start fresh after the expected cache-reuse interval expires. That is a plugin decision, not something cache expiry forces. Where the actual TTL is unknown, the UI must say the countdown is an estimate. There will be no background requests just to keep a cache warm.
+Anthropic's [SDK overview](https://code.claude.com/docs/en/agent-sdk/overview) restricts third-party use of claude.ai login without prior approval. Personal authentication working here does not establish distribution eligibility or immunity from account restrictions.
 
-Saved conversations survive inactivity. Sticky mode makes conversations persistent automatically. A cold saved conversation can still be resumed, but rebuilding its cache may cost more.
+Unsaved conversations use SDK-backed temporary transcripts. The plugin's manifest records exact IDs and holds an OS lock while a bridge owns them. New, expiry, clean shutdown, or startup recovery deletes only unsaved plugin-owned sessions. Saved sessions resume after a restart, using the same SDK ID. Another live Neovim cannot claim the same saved session. `clear` preserves the previous saved checkpoint and starts detached working context. Sticky off never unsaves an existing conversation.
 
-- `:NvClaude clear` clears active working history. It does not delete Anthropic's server-side cache or erase saved conversations from the list.
-- `:NvClaude new` starts another conversation, leaving a saved previous conversation available.
-- `:NvClaude save` retains the current conversation.
-- `:NvClaude sticky [on|off]` controls automatic persistence; with no argument, it toggles.
-- `:NvClaude compact` summarizes the active context. Compaction is lossy and may itself use tokens.
-- `:NvClaude info` separates current context occupancy from cumulative usage and labels estimated cache information.
-- `:NvClaude list` shows saved conversations, newest first, as `YY:MM:DD:HH:MM:SS - <Initial prompt...>`.
+The estimated ephemeral lifetime is one hour for subscription mode or five minutes for explicit API mode, updated from cache-creation usage when available. Expiry happens only before a new turn, never during one. Saved sessions do not expire. There are no keep-warm requests. Provider cache deletion, diagnostic retention, and forensic erasure are not promised.
 
-The SDK writes session transcripts to disk by default.[6] Here, ephemeral means temporary storage, not memory-only operation. The plugin tracks its own sessions, retains their complete history on save, and removes unsaved transcripts on expiry or shutdown. Startup cleanup must not touch sessions owned by another live instance or unrelated Claude Code conversations.
+## Punctuation
 
-## Output character handling
+Default `watermarks allow` preserves output. `replace` maps em/en dashes to `-`, curly single quotes to `'`, curly double quotes to `"`, ellipsis to `...`, and nonbreaking space to ordinary space. `remove` deletes exactly those characters and may join words or break code. It is opt-in. Other Unicode, including zero-width characters, passes through.
 
-The original `watermarks` command name is retained, but this feature is **punctuation normalization**, not AI detection or watermark removal. An em dash is an ordinary Unicode punctuation character, not evidence that text came from a model.
+Normalization touches only displayed or inserted text, never raw SDK history. The next buffer diff describes what actually reached the editor. This is punctuation normalization, not watermark detection or an authorship claim.
 
-- `:NvClaude watermarks allow` leaves output unchanged. This is the default.
-- `:NvClaude watermarks remove` removes characters in an explicit, documented character set.
-- `:NvClaude watermarks replace` substitutes those characters with configured ASCII equivalents.
+## Development verification
 
-This is about navigation: `f-` does not find an em dash. It is not a reason to strip arbitrary Unicode, accents, mathematical notation, or non-Latin text. The exact initial character map is specified in the spec.
+- `python tests/test_contracts.py` checks parsing, result validation, context revisions, excerpts, and Unicode normalization.
+- `nvim --headless -u NONE -l tests/editor.lua` checks editor-owned targets, stale edits, undo, block cells, captured insertion, and key ownership.
+- With the private SDK interpreter, `python tests/runtime.py --state <disposable-directory>` exercises real sequential Haiku calls, persistence, prompt changes, budget refusal, and manual/automatic compaction. It uses account access and deletes the test directory's conversation records. Never point it at real plugin state.
 
-Normalization applies only to displayed or inserted output. The raw assistant reply stays unchanged in conversation history. If the next request includes a buffer diff, that diff describes the actual normalized text in the buffer, so Claude can see what was really applied without rewriting earlier messages.
-
-## Editing the system prompt
-
-`:NvClaude system modify` opens the plugin's default prompt in an editable scratch buffer. Saving it changes the prompt for subsequent requests in this Neovim session. `:NvClaude system default` restores the built-in prompt. Overrides do not automatically persist across Neovim restarts.
-
-Changing the system prompt can invalidate the cached prefix. It does not inherently require deleting the conversation. Recent Claude Code runtimes also snapshot system prompts, so the implementation must deliberately arrange for edits to take effect, rather than merely changing a Python variable. Sticky mode controls retention, not cache validity.
-
-The [specification](SPEC.md#model-input-and-output-contract) contains the replacement system prompt. It defines edit targets separately from supporting context, treats buffer contents as data, and distinguishes snapshots from diffs. Ask returns streaming prose. Editing returns a validated JSON result containing each target's replacement text, or a clarification that changes no buffer. Only decoded replacement text is inserted; the JSON envelope is not.
-
-## Sources
-
-These references support the factual corrections, not a claim that the plugin has been implemented or tested.
-
-1. [Haiku 5.5 context and pricing](https://code.claude.com/docs/en/model-config#haiku-5-5-context-window-and-pricing), [API prompt-caching pricing](https://platform.claude.com/docs/en/build-with-claude/prompt-caching#pricing).
-2. [Python SDK repository and prerequisites](https://github.com/anthropics/claude-agent-sdk-python), [TypeScript SDK terms](https://github.com/anthropics/claude-agent-sdk-typescript#license-and-terms).
-3. [Agent SDK overview and authentication restriction](https://code.claude.com/docs/en/agent-sdk/overview).
-4. Neovim `:help map-ambiguous`, `:help timeoutlen`, and [`:help map-nowait`](https://neovim.io/doc/user/map.html#map-nowait).
-5. [Claude Code cache lifetime](https://code.claude.com/docs/en/prompt-caching#cache-lifetime), [API prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching).
-6. [SDK sessions and persistence](https://code.claude.com/docs/en/agent-sdk/sessions), [Python SDK reference](https://code.claude.com/docs/en/agent-sdk/python).
-
-## License
-
-See [LICENSE](LICENSE) for the GNU General Public License, version 3.
+The plugin is Lua and Python. There is no native build or separate server port. Lua and Python exchange JSON-RPC frames over the bridge's stdio. [LICENSE](LICENSE) is GPL-3.0; the SDK's bundled Claude Code runtime has its own terms.
