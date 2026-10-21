@@ -478,6 +478,7 @@ class Bridge:
             raise RPCError("Manual compaction under a capped session is unsupported: Claude Code disables /compact when enforcing its context window")
         if record["turn_count"] == 0:
             raise RPCError("Nothing to compact in this conversation")
+        request_started_at = time.time()
         await client.query("/compact")
         boundary = False
         result = None
@@ -494,7 +495,7 @@ class Bridge:
         usage = result.usage or {}
         for key in record["usage"]:
             record["usage"][key] += int(usage.get(key) or 0)
-        record["last_request_at"] = time.time()
+        record["last_request_at"] = request_started_at
         record["baselines"] = {}
         record["history_bytes"] = 0
         record["requires_measurement"] = True
@@ -556,6 +557,7 @@ class Bridge:
             if must_compact:
                 raise RPCError("Next turn approaches the local budget; this runtime cannot compact while its hard context window is active. Start a fresh conversation or explicitly select model-default budget.")
             await send({"jsonrpc": "2.0", "method": "event", "params": {"id": rpc_id, "epoch": params.get("epoch"), "type": "status", "status": "continued" if r["turn_count"] else "new"}})
+            request_started_at = time.time()
             await client.query(text)
             chunks: list[str] = []
             streamed = False
@@ -606,7 +608,7 @@ class Bridge:
                 r["session_id"] = result.session_id
             r["turn_count"] += 1
             r["history_bytes"] += _bytes_upper(text) + _bytes_upper(answer) + 1024
-            r["last_request_at"] = time.time()
+            r["last_request_at"] = request_started_at
             r["cache_ttl_seconds"] = 3600 if self.auth_method == "claude.ai" else 300
             if doc_id and revision:
                 if request["context"]["kind"] == "excerpt":
