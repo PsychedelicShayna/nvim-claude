@@ -75,31 +75,21 @@ end
 
 local function provision(callback)
   if vim.fn.filereadable(ready) == 1 and vim.fn.executable(python) == 1 then return start(callback) end
-  if installing then
-    notify('SDK installation already running; retry after it completes')
-    return callback('SDK provisioning in progress')
-  end
+  if installing then return callback('SDK provisioning in progress; retry when setup finishes') end
   local interpreter = M.interpreter or vim.fn.exepath('python3')
   if interpreter == '' then return callback('Python 3.10+ not found') end
   installing = true
   vim.fn.mkdir(data, 'p')
-  notify('Creating Python virtual environment asynchronously')
-  local setup = vim.fn.jobstart({ interpreter, '-m', 'venv', data .. '/venv' }, {
+  notify('Installing the SDK asynchronously (other Neovim instances wait on a file lock)')
+  local setup = vim.fn.jobstart({ interpreter, root .. '/python/bootstrap.py', data }, {
+    on_stderr = function(_, chunks)
+      local text = table.concat(chunks, '\n')
+      if text ~= '' then notify(text, vim.log.levels.ERROR) end
+    end,
     on_exit = function(_, code)
-      if code ~= 0 then
-        installing = false
-        return callback('Virtual environment creation failed (exit ' .. code .. ')')
-      end
-      notify('Installing latest claude-agent-sdk; this can take a minute')
-      local pip = vim.fn.jobstart({ python, '-m', 'pip', 'install', 'claude-agent-sdk' }, {
-        on_exit = function(_, status)
-          installing = false
-          if status ~= 0 then return callback('SDK installation failed (exit ' .. status .. '); check pip/network and retry') end
-          vim.fn.writefile({ 'installed' }, ready)
-          start(callback)
-        end,
-      })
-      if pip <= 0 then installing = false; callback('Cannot start SDK installation') end
+      installing = false
+      if code ~= 0 then return callback('SDK setup failed (exit ' .. code .. '); check Python, pip and network') end
+      start(callback)
     end,
   })
   if setup <= 0 then
