@@ -1,8 +1,8 @@
 # Development rules
 
-Read CONTEXT.md before domain work. Read SPEC.md before designing or implementing plugin behavior; it separates owner requirements, proposals, and open decisions. Do not treat proposals as implementation authorization.
+Read CONTEXT.md before domain work. Read SPEC.md before designing or implementing plugin behavior; it defines the shared behavior and acceptance criteria. Runtime limitations need evidence, not silent scope reductions.
 
-The current assignment establishes a shared documentation and repository baseline for later end-to-end implementation comparisons. Do not start plugin implementation or comparison runs until the owner explicitly starts them.
+The repository currently contains the common baseline for later independent end-to-end implementation comparisons. The owner starts those runs explicitly. Each implementation uses the same baseline commit in its own worktree; preparing this repository does not start a run.
 
 ## Repository workflow
 
