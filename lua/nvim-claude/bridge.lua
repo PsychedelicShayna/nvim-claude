@@ -91,7 +91,8 @@ end
 local function start_bridge()
   local python = runtime_dir .. "/venv/bin/python"
   receive_buffer = ""
-  process = vim.system({
+  local spawned
+  spawned = vim.system({
     python, script, "--serve", "--state-dir", state_dir, "--system-prompt", system_prompt,
   }, {
     stdin = true,
@@ -103,12 +104,14 @@ local function start_bridge()
     end,
   }, function(result)
     vim.schedule(function()
+      if process ~= spawned then return end
       process = nil
       ready = false
       starting = false
       reject_all("bridge exited with code " .. result.code)
     end)
   end)
+  process = spawned
   raw_call("initialize", {}, function(result, err)
     starting = false
     if err then
