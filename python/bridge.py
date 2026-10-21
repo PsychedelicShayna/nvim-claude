@@ -242,6 +242,10 @@ class Bridge:
             limit = config.get('context_limit_tokens')
             if limit is not None and (not isinstance(limit, int) or limit <= 0):
                 raise ValueError('Context budget must be a positive integer or model default')
+            metadata = next((m for m in models if config['model'] in (m['value'], m.get('resolvedModel'))), None)
+            effort = config.get('effort')
+            if metadata and effort is not None and effort not in metadata.get('supportedEffortLevels', []):
+                raise ValueError('Runtime does not advertise that effort for the selected model')
             await self.close_client()
             self.config = config
             self.conversation['config'] = dict(config)

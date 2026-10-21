@@ -11,7 +11,7 @@ class Contracts(unittest.TestCase):
         parsed = parse_model('claude-opus-4-6[1m][500k]:high', current, [])
         self.assertEqual(parsed, {'model': 'claude-opus-4-6[1m]', 'effort': 'high', 'context_limit_tokens': 500000})
         self.assertEqual(parse_model('gateway:model', current, [])['model'], 'gateway:model')
-        self.assertEqual(parse_model('claude-opus-4-6[1m]:high', current, [])['context_limit_tokens'], 100000)
+        self.assertIsNone(parse_model('claude-opus-4-6[1m]:high', current, [])['context_limit_tokens'])
         with self.assertRaises(ValueError):
             parse_model('unknown[1m]', current, [])
         self.assertEqual(parse_model('unknown[limit=1m]', current, [])['context_limit_tokens'], 1000000)

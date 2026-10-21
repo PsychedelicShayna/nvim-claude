@@ -9,3 +9,4 @@
 - Keep raw model history separate from punctuation normalization and buffer context.
 - Refuse numeric hard-budget requests because the inspected runtime has no verified preflight enforcement mechanism. The candidate therefore does not satisfy the specification's ordinary 100k editing acceptance criterion.
 - Fix prompt resizing to retain its floating-window coordinate frame. The attached Neovim UI exercise caught the original callback error; the corrected multiline prompt, Escape behavior and focus restoration passed.
+- Match the native-selector expression table, validate raw effort choices against runtime metadata and show the local-budget consequence in model-change notifications.

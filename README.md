@@ -78,6 +78,8 @@ gateway:model[limit=100k]:low
 
 Model, effort and local budget remain separate. Recognized native selectors stay in the runtime slug. Unknown `[1m]` selectors require raw configuration or explicit `[limit=1m]`, rather than silently guessing a native capability. Decimal `k` and `m` mean 1,000 and 1,000,000.
 
+A lone recognized native selector, such as `claude-opus-4-6[1m]:high`, selects the model-default local budget, as specified in the shared expression table. Add `[100k]` or `[limit=100k]` after it to request a local ceiling. The model-change notification always states the resulting budget.
+
 Presets: 50k, 90k, 100k, 124k, 150k, 164k, 200k, 224k, 256k, 258k, 274k, 278k, 300k, 374k, 378k, 384k, 412k, 456k, 500k, 512k, 600k, 650k, 700k, 750k, 800k, 850k, 900k, 950k, 980k, and model default.
 
 **Every numeric local budget is currently unsupported and refused before inference.** Selecting model default, or explicitly setting `context_limit_tokens = false`, removes that local ceiling. This is an explicit opt-out, not a workaround that preserves 100k protection. No uncapped model request was used for this benchmark's verification. Physical-capacity checks under model default are conservative estimates using runtime telemetry, UTF-8 byte counts and an 8,192-token overhead allowance; they are not a verified hard bound. Output reservation is 4,096 tokens.

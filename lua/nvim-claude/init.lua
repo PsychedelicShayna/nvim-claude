@@ -27,7 +27,11 @@ local function request(method, params, cb)
 end
 local function configure(value)
   request('configure', value, function(err, result)
-    if err then notify(err) else S.model = result.model; notify('Model: ' .. result.model .. ', effort: ' .. tostring(result.effort)) end
+    if err then notify(err); return end
+    S.model = result.model
+    local budget = type(result.context_limit_tokens) == 'number' and tostring(result.context_limit_tokens)
+      or 'model default (no local ceiling)'
+    notify('Model: ' .. result.model .. ', effort: ' .. tostring(result.effort) .. ', budget: ' .. budget)
   end)
 end
 function M.invoke(operation, visual, previous)

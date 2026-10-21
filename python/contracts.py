@@ -39,13 +39,15 @@ def parse_model(expression, current, models):
                 raise ValueError('Unverified native [1m] selector; use raw model fields or [limit=1m]')
             result['context_limit_tokens'] = number(part)
             value = value[:suffix.start()]
+        elif value in native and len(groups) == 1:
+            result['context_limit_tokens'] = None
     result['model'] = value
     metadata = next((m for m in models if value in (m['value'], m.get('resolvedModel'))), None)
     if metadata and not metadata.get('supportsEffort'):
         if sep and effort in EFFORTS:
             raise ValueError('Runtime does not advertise effort for this model')
         result['effort'] = None
-    elif metadata and result.get('effort') not in metadata.get('supportedEffortLevels', []):
+    elif metadata and result.get('effort') is not None and result['effort'] not in metadata.get('supportedEffortLevels', []):
         raise ValueError('Effort is not announced for this model')
     return result
 
