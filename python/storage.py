@@ -83,11 +83,12 @@ class Store:
         if path.name != session_id + ".jsonl":
             raise ValueError("Unexpected runtime transcript identity")
         if path.exists():
-            for line in path.open():
-                item = json.loads(line)
-                cwd = item.get("cwd")
-                if cwd and Path(cwd).resolve() != self.workspace.resolve():
-                    raise ValueError("Runtime transcript does not belong to the plugin workspace")
+            with path.open() as transcript:
+                for line in transcript:
+                    item = json.loads(line)
+                    cwd = item.get("cwd")
+                    if cwd and Path(cwd).resolve() != self.workspace.resolve():
+                        raise ValueError("Runtime transcript does not belong to the plugin workspace")
         if str(path) not in record["paths"]:
             record["paths"].append(str(path))
         record["session_id"] = session_id
@@ -103,8 +104,9 @@ class Store:
                 self.remember_path(record, path, record["session_id"])
         for entry in record["paths"]:
             path = Path(entry)
-            # Only exact paths registered from this plugin's runtime are removed.
-            if path.name != record["session_id"] + ".jsonl":
+            # Every path was registered against its exact runtime session ID.
+            # Compaction/reset may rotate the current ID without unowning older records.
+            if path.suffix != ".jsonl" or str(uuid.UUID(path.stem)) != path.stem:
                 continue
             path.unlink(missing_ok=True)
             sidecar = path.with_suffix("")
