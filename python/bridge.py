@@ -462,9 +462,11 @@ class Bridge:
                 if frame is None:
                     break
                 self.active, self.cancelled = frame.get("id"), False
-                self.epoch = frame.get("params", {}).pop("epoch", self.epoch)
-                method, params = frame["method"], frame.get("params", {})
+                method, params = frame.get("method"), frame.get("params", {})
                 try:
+                    if not isinstance(params, dict):
+                        raise ValueError("This bridge requires named JSON object parameters")
+                    self.epoch = params.pop("epoch", self.epoch)
                     result = await self.handle(method, params)
                     send({"jsonrpc": "2.0", "id": self.active, "result": result})
                 except Exception as error:

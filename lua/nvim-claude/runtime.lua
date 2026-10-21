@@ -18,7 +18,8 @@ local function write(method, params, cb)
   M.next_id = M.next_id + 1
   local id = M.next_id
   M.pending[id] = cb
-  local body = vim.json.encode({ jsonrpc = '2.0', id = id, method = method, params = params or {} })
+  if not params or next(params) == nil then params = vim.empty_dict() end
+  local body = vim.json.encode({ jsonrpc = '2.0', id = id, method = method, params = params })
   local ok = pcall(api.nvim_chan_send, M.job, 'Content-Length: ' .. #body .. '\r\n\r\n' .. body)
   if not ok then M.pending[id] = nil; cb(nil, 'Bridge pipe closed') end
   return id
