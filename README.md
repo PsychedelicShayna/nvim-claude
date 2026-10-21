@@ -1,8 +1,15 @@
 # nvim-claude
 
+> [!IMPORTANT]
+> Round 1 metadata-only post-run correction. This candidate ran with GPT-6.1 Sol, `openai-codex/gpt-6.1-sol`, at **xhigh** effort in NeoPi.
+> Original branch: `experimental/benchmark-sol-6-1-high-neopi-20261021T161659Z`.
+> Original delivered commit: [`8249a35b6dd9c6b9d87c06716e642503a4cfad9a`](https://github.com/PsychedelicShayna/nvim-claude/commit/8249a35b6dd9c6b9d87c06716e642503a4cfad9a).
+> Corrected installable branch: [`experimental/round-1-sol-6-1-xhigh-neopi-20261021T161659Z`](https://github.com/PsychedelicShayna/nvim-claude/tree/experimental/round-1-sol-6-1-xhigh-neopi-20261021T161659Z).
+> The branch rename and this README-only commit correct attribution after delivery. They do not change the implementation, rerun the benchmark, or rewrite the historical run record.
+
 A cursor-local Neovim companion backed by the official Python Claude Agent SDK. Ask a question in a float, transform a selection, or insert text at a captured cursor boundary. Claude has no editing tools. Lua applies a completed, validated edit once.
 
-This is the independent **Sol 6.1 high / NeoPi benchmark candidate**. It remains unmerged pending the owner's comparison.
+This is the independent **Sol 6.1 xhigh / NeoPi benchmark candidate**. It remains unmerged pending the owner's comparison.
 
 ## Install
 
@@ -11,7 +18,7 @@ Requires Neovim **0.12+**, Python **3.10+** with `venv` and pip, and network acc
 ```lua
 {
   "PsychedelicShayna/nvim-claude",
-  branch = "experimental/benchmark-sol-6-1-high-neopi-20261021T161659Z",
+  branch = "experimental/round-1-sol-6-1-xhigh-neopi-20261021T161659Z",
   main = "nvim-claude",
   opts = {},
 }
