@@ -258,22 +258,28 @@ function M.apply(value, replacements, normalize)
   for index, item in ipairs(ordered_segments) do
     local start_pos = api.nvim_buf_get_extmark_by_id(value.buf, ns, item.start_mark, {})
     local end_pos = api.nvim_buf_get_extmark_by_id(value.buf, ns, item.end_mark, {})
-    local replacement = normalize(replacements[item.id])
-    if item.block then replacement = item.left_keep .. replacement .. item.right_keep end
+    local target_text = normalize(replacements[item.id])
+    local prefix = item.block and item.left_keep or ""
+    local suffix = item.block and item.right_keep or ""
+    local replacement = prefix .. target_text .. suffix
     if index > 1 then pcall(vim.cmd, "undojoin") end
     api.nvim_buf_set_text(value.buf, start_pos[1], start_pos[2], end_pos[1], end_pos[2], vim.split(replacement, "\n", { plain = true }))
-    applied[item.id] = { start_pos[1], start_pos[2], replacement }
+    applied[item.id] = {
+      row = start_pos[1],
+      col = start_pos[2] + #prefix,
+      text = target_text,
+    }
   end
   for _, item in ipairs(value.segments) do
     local detail = applied[item.id]
     api.nvim_buf_del_extmark(value.buf, ns, item.start_mark)
     api.nvim_buf_del_extmark(value.buf, ns, item.end_mark)
-    local er, ec = end_position(detail[1], detail[2], detail[3])
-    item.start_mark = make_mark(value.buf, detail[1], detail[2], false)
+    local er, ec = end_position(detail.row, detail.col, detail.text)
+    item.start_mark = make_mark(value.buf, detail.row, detail.col, false)
     item.end_mark = make_mark(value.buf, er, ec, true)
-    item.original = detail[3]
-    item.text = detail[3]
-    item.start_row, item.start_col, item.end_row, item.end_col = detail[1], detail[2], er, ec
+    item.original = detail.text
+    item.text = detail.text
+    item.start_row, item.start_col, item.end_row, item.end_col = detail.row, detail.col, er, ec
     item.left_keep, item.right_keep = "", ""
   end
   value.changedtick = api.nvim_buf_get_changedtick(value.buf)

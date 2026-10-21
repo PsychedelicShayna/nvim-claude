@@ -70,6 +70,10 @@ for _, item in ipairs(block.segments) do block_replacements[item.id] = "Q" end
 local block_ok, block_reason = target.apply(block, block_replacements, function(value) return value end)
 assert(block_ok, block_reason)
 equal(vim.api.nvim_buf_get_lines(buf, 0, -1, false), { "       Qc", "x      Q" }, "block replacement preserves unselected tab cells")
+for _, item in ipairs(block.segments) do block_replacements[item.id] = "R" end
+block_ok, block_reason = target.apply(block, block_replacements, function(value) return value end)
+assert(block_ok, block_reason)
+equal(vim.api.nvim_buf_get_lines(buf, 0, -1, false), { "       Rc", "x      R" }, "block follow-up targets only the prior replacement")
 
 equal(plugin._normalize("a—b “c”…"), "a—b “c”…", "allow keeps punctuation")
 plugin.setup({ keys = false, punctuation = "replace" })
