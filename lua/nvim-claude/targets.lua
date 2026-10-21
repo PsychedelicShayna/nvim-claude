@@ -29,23 +29,25 @@ function M.valid(buf, targets)
   return true
 end
 
-function M.wire(buf, targets)
-  local result = {}
-  for _, target in ipairs(targets) do
-    local start, finish = pos(buf, target.first), pos(buf, target.last)
-    result[#result + 1] = {
-      id = target.id, start = start, ['end'] = finish, text = target.display or target.original,
-      block = target.block or nil,
-      before = vim.api.nvim_buf_get_lines(buf, math.max(0, start[1] - 1), start[1] + 1, false)[1],
-    }
-  end
-  return result
-end
-
 local function safe_column(line, col)
   col = math.max(0, math.min(col, #line))
   while col > 0 and col < #line and line:byte(col + 1) >= 128 and line:byte(col + 1) < 192 do col = col - 1 end
   return col
+end
+function M.wire(buf, targets)
+  local result = {}
+  for _, target in ipairs(targets) do
+    local start, finish = pos(buf, target.first), pos(buf, target.last)
+    local start_line = vim.api.nvim_buf_get_lines(buf, start[1], start[1] + 1, false)[1] or ''
+    local end_line = vim.api.nvim_buf_get_lines(buf, finish[1], finish[1] + 1, false)[1] or ''
+    result[#result + 1] = {
+      id = target.id, start = start, ['end'] = finish, text = target.display or target.original,
+      block = target.block or nil,
+      before = start_line:sub(safe_column(start_line, start[2] - 64) + 1, start[2]),
+      after = end_line:sub(finish[2] + 1, safe_column(end_line, finish[2] + 64)),
+    }
+  end
+  return result
 end
 
 local function block_span(line, left, right)

@@ -117,7 +117,14 @@ local function event(message)
   active = nil
   if message.type == 'canceled' then return notice('Request canceled') end
   if message.type == 'error' then
-    display((message.message or 'Request failed') .. (message.raw and '\n\n' .. message.raw or ''), 'result not applied', task.origin)
+    local reason = message.message or 'Request failed'
+    if reason:lower():match('auth') or reason:lower():match('credential') or reason:lower():match('log.?in') then
+      if not reason:find('ANTHROPIC_API_KEY', 1, true) then
+        reason = reason .. '\nSign in with :NvClaude login (bundled Claude Code runtime).'
+      end
+    end
+    if message.raw then last_result = { text = message.raw, label = 'result not applied' } end
+    display(reason .. (message.raw and '\n\n' .. message.raw or ''), 'result not applied', task.origin)
     return
   end
   if message.type ~= 'complete' then return end
@@ -133,6 +140,7 @@ local function event(message)
   end
   local ok, reason = targets.apply(task.buffer, task.targets, message.result.replacements, output)
   if not ok then
+    last_result = { text = message.raw or '', label = 'result not applied' }
     display(reason .. '\n\n' .. (message.raw or ''), 'result not applied', task.origin)
   elseif task.operation == 'generate' then
     targets.content_action()

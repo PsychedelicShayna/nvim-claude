@@ -21,12 +21,12 @@ assert(live and targets.wire(buf, live)[1].text == 'alpha')
 vim.cmd('normal! \27')
 vim.keymap.del('x', 'gR')
 
-
 lines({ 'café z' })
 vim.api.nvim_win_set_cursor(0, { 1, 6 })
 vim.cmd('normal! v3h\27')
 local reversed = assert(targets.selection(buf))
-assert(targets.wire(buf, reversed)[1].text == 'fé z')
+local span = targets.wire(buf, reversed)[1]
+assert(span.text == 'fé z' and span.before == 'ca' and span.after == '')
 assert(apply(reversed, { { id = 'target-0', text = 'lion' } }))
 assert(current()[1] == 'calion')
 vim.cmd('undo')
@@ -66,10 +66,11 @@ assert(#short == 2 and targets.wire(buf, short)[2].text == '')
 assert(apply(short, { { id = 'target-0', text = 'A' }, { id = 'target-1', text = 'B' } }))
 assert(current()[1] == 'wAz' and current()[2] == 'xB' and current()[3] == 'tail')
 
-
 lines({ 'brown fox' })
 vim.api.nvim_win_set_cursor(0, { 1, 0 })
 local insertion = targets.insertion(buf, false)
+local boundary = targets.wire(buf, insertion)[1]
+assert(boundary.before == '' and boundary.after == 'brown fox')
 assert(apply(insertion, { { id = 'target-0', text = 'quick ' } }))
 assert(current()[1] == 'quick brown fox')
 vim.cmd('undo')

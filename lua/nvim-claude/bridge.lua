@@ -126,6 +126,9 @@ local function provision()
         uv.fs_unlink(lock .. '/pid')
         uv.fs_rmdir(lock)
       end
+    else
+      local stat = uv.fs_stat(lock)
+      if stat and os.time() - stat.mtime.sec > 30 then uv.fs_rmdir(lock) end
     end
     vim.defer_fn(function()
       if booting then provision() end
