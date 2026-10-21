@@ -319,7 +319,7 @@ class Bridge:
             return config
         if method == 'system':
             await self.disconnect()
-            self.prompt = params.get('prompt') or SYSTEM.read_text()
+            self.prompt = params['prompt'] if 'prompt' in params else SYSTEM.read_text()
             self.baselines = {}
             return {'message': 'Prompt changes on the next request; same SDK history resumes with snapshot off. Prefix cache may be cold.'}
         if method == 'watermarks':

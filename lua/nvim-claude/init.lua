@@ -43,14 +43,14 @@ local function events(method, params)
     vim.api.nvim_echo({ { 'Claude: ' .. params.message, 'ModeMsg' } }, false, {})
   elseif method == 'text' and state.busy and params.generation == state.generation then
     state.raw_preview = params.text
-    if state.last_result then state.last_result.text = params.text end
+    if state.view and state.last_result then state.last_result.text = params.text end
     if state.view then state.view.update(params.text) end
   end
 end
 
 local function call(method, params, callback)
   rpc.call(opts, events, method, params or {}, function(result, err)
-    if err then message(err, vim.log.levels.ERROR) end
+    if err and method ~= 'request' then message(err, vim.log.levels.ERROR) end
     if callback then callback(result, err) end
   end)
 end
@@ -207,8 +207,12 @@ local function system_modify()
     api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(info.system_prompt, '\n', { plain = true }))
     api.nvim_create_autocmd('BufWriteCmd', { buffer = buf, callback = function()
       if state.busy then message('Wait for the active turn before changing the prompt'); return end
+      local revision = api.nvim_buf_get_changedtick(buf)
       call('system', { prompt = table.concat(api.nvim_buf_get_lines(buf, 0, -1, false), '\n') }, function(result, error)
-        if not error then vim.bo[buf].modified = false; message(result.message) end
+        if not error then
+          if api.nvim_buf_is_valid(buf) and api.nvim_buf_get_changedtick(buf) == revision then vim.bo[buf].modified = false end
+          message(result.message)
+        end
       end)
     end })
     vim.bo[buf].modified = false

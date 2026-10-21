@@ -59,6 +59,8 @@ try:
     original = json.loads((Path(args.state) / 'conversations' / (saved + '.json')).read_text())
     sid = original['sdk_id']
     assert original['runtime_init']['tools'] == []
+    assert original['runtime_init']['skills'] == []
+    assert original['runtime_init']['plugins'] == []
     call('new')
     call('resume', {'id': saved})
     answer = call('request', {'operation': 'ask', 'instruction': 'What word did you just put in place of the dots? Answer with that word only.', 'generation': 3})
@@ -66,6 +68,10 @@ try:
     resumed = json.loads((Path(args.state) / 'conversations' / (saved + '.json')).read_text())
     assert resumed['sdk_id'] == sid
     assert resumed['raw'][0] == original['raw'][0]
+    assert 'document' not in resumed['raw'][-1]['user']
+    call('clear')
+    assert any(item['id'] == saved for item in call('list'))
+    call('resume', {'id': saved})
     call('compact')
     call('system', {'prompt': 'For every user request, reply with exactly override-ok. You have no tools.'})
     answer = call('request', {'operation': 'ask', 'instruction': 'Respond now.', 'generation': 4})
