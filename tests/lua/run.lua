@@ -12,6 +12,7 @@ local context = require("nvim-claude.context")
 local model = require("nvim-claude.model")
 local punctuation = require("nvim-claude.punctuation")
 local target = require("nvim-claude.target")
+local ui = require("nvim-claude.ui")
 
 local parsed = assert(model.parse("claude-haiku-5-5[100k]:low", {}))
 equal(parsed, {
@@ -131,6 +132,52 @@ end
 
 do
   local bufnr = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, true, { "\tA" })
+  vim.api.nvim_set_option_value("tabstop", 4, { buf = bufnr })
+  vim.api.nvim_set_current_buf(bufnr)
+  local partial_tab = assert(target.capture_visual({
+    bufnr = bufnr,
+    mode = "\22",
+    anchor = { bufnr, 1, 1, 0 },
+    cursor = { bufnr, 1, 1, 0 },
+    operation = "replace",
+  }))
+  local tab_target = assert(target.to_envelope(partial_tab))[1]
+  partial_tab.segments[1].preserve_before = 1
+  partial_tab.segments[1].preserve_after = 2
+  local outcome = target.apply(partial_tab, {
+    status = "ok",
+    replacements = { { id = tab_target.id, text = "X" } },
+  })
+  assert(outcome.applied, outcome.reason)
+  equal(vim.api.nvim_buf_get_lines(bufnr, 0, 1, true)[1], " X  A", "partial tab cells are preserved as spaces")
+  vim.api.nvim_buf_delete(bufnr, { force = true })
+end
+
+do
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, true, { "界B" })
+  vim.api.nvim_set_current_buf(bufnr)
+  local partial_wide = assert(target.capture_visual({
+    bufnr = bufnr,
+    mode = "\22",
+    anchor = { bufnr, 1, 1, 0 },
+    cursor = { bufnr, 1, 1, 0 },
+    operation = "replace",
+  }))
+  local wide_target = assert(target.to_envelope(partial_wide))[1]
+  partial_wide.segments[1].preserve_before = 1
+  local outcome = target.apply(partial_wide, {
+    status = "ok",
+    replacements = { { id = wide_target.id, text = "X" } },
+  })
+  assert(outcome.applied, outcome.reason)
+  equal(vim.api.nvim_buf_get_lines(bufnr, 0, 1, true)[1], " XB", "partial wide-character cell is preserved")
+  vim.api.nvim_buf_delete(bufnr, { force = true })
+end
+
+do
+  local bufnr = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(bufnr, 0, -1, true, { "hello" })
   vim.api.nvim_set_current_buf(bufnr)
   vim.api.nvim_win_set_cursor(0, { 1, 2 })
@@ -144,6 +191,41 @@ do
   assert(outcome.applied)
   equal(vim.api.nvim_buf_get_lines(bufnr, 0, 1, true)[1], "heXllo", "generate inserts once at captured boundary")
   vim.api.nvim_buf_delete(bufnr, { force = true })
+end
+
+do
+  local source = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(source, 0, -1, true, { "source" })
+  vim.api.nvim_set_current_buf(source)
+  local origin_win = vim.api.nvim_get_current_win()
+  local submitted
+  local prompt = ui.prompt({
+    origin_win = origin_win,
+    operation = "ask",
+    model = "claude-haiku-5-5",
+    on_submit = function(text)
+      submitted = text
+      return true
+    end,
+  })
+  equal(vim.api.nvim_win_get_config(prompt.winid).relative, "editor", "prompt uses screen-constrained placement")
+  assert(vim.fn.maparg("<C-s>", "i") ~= "", "prompt Insert Ctrl-S mapping")
+  assert(vim.fn.maparg("<CR>", "n") ~= "", "prompt Normal Enter mapping")
+  vim.api.nvim_buf_set_lines(prompt.bufnr, 0, -1, true, { "question", "continued" })
+  prompt:submit()
+  equal(submitted, "question\ncontinued", "multiline prompt submission")
+  equal(vim.api.nvim_get_current_win(), origin_win, "prompt restores origin focus")
+
+  local answer = ui.answer({ origin_win = origin_win, text = "one" })
+  answer:append(" two")
+  equal(answer:text(), "one two", "answer streams into its own buffer")
+  answer:close()
+  assert(not answer:is_open(), "answer float closes without disposal")
+  answer:append(" three")
+  answer:open()
+  equal(answer:text(), "one two three", "hidden answer retains later output")
+  answer:dispose()
+  vim.api.nvim_buf_delete(source, { force = true })
 end
 
 

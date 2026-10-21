@@ -421,8 +421,15 @@ class Bridge:
 
     async def rpc_session_compact(self, params: dict[str, Any]) -> dict[str, Any]:
         await self._require_idle()
-        if self.client is None:
+        if not self.active.get("session_id"):
             raise ValueError("There is no active SDK session to compact")
+        configured_limit = self.active.get("context_limit_tokens", DEFAULT_LIMIT)
+        await self._ensure_client(
+            str(self.active.get("model") or DEFAULT_MODEL),
+            self.active.get("effort"),
+            None if configured_limit is False else int(configured_limit),
+            self.system_prompt,
+        )
         usage = await self._compact(None)
         return {"compacted": True, "context_usage": usage, "baselines_invalidated": True}
 
@@ -660,6 +667,16 @@ class Bridge:
         env = dict(os.environ)
         if limit is not None and limit >= 100_000:
             env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = str(limit)
+        try:
+            from claude_agent_sdk.types import SystemPromptCustom
+
+            prompt_config: Any = SystemPromptCustom(
+                type="custom",
+                prompt=system_prompt,
+                snapshot=False,
+            )
+        except ImportError:
+            prompt_config = system_prompt
         options = ClaudeAgentOptions(
             tools=[],
             allowed_tools=[],
@@ -670,7 +687,7 @@ class Bridge:
             skills=[],
             plugins=[],
             agents={},
-            system_prompt=system_prompt,
+            system_prompt=prompt_config,
             model=model,
             effort=effort,
             thinking={"type": "disabled"} if thinking_disabled else None,
