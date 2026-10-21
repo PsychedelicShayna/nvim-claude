@@ -198,12 +198,15 @@ function M.apply(target, replacements)
   local by_id = {}
   for _, r in ipairs(replacements) do by_id[r.id] = r.text end
   if #replacements ~= #positions then return nil, 'Replacement count mismatch' end
+  local changed = false
   for _, p in ipairs(positions) do
     if type(by_id[p.part.id]) ~= 'string' then return nil, 'Replacement ID mismatch' end
     if target.kind:sub(1, 1) == '\22' and by_id[p.part.id]:find('[\r\n]') then
       return nil, 'Blockwise replacement contains a newline'
     end
+    if p.part.prefix .. by_id[p.part.id] .. p.part.suffix ~= p.part.original then changed = true end
   end
+  if not changed then return M.clone(target) end
   target.applying = true
   local new_ranges = {}
   local ok, failure = pcall(api.nvim_buf_call, target.buf, function()

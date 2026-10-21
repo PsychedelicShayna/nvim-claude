@@ -120,6 +120,8 @@ class Bridge:
                                        "cc-plugin-plugin-authoring@builtin": False}}
         sid = self.record.get("session_id")
         if sid and not _resolve_session_file_path(sid, str(self.store.workspace)):
+            if self.record["history"]:
+                raise ValueError("The recorded SDK transcript is missing; refusing to replace saved history with an empty session")
             sid = None  # A model-menu handshake need not have written a transcript.
         options = ClaudeAgentOptions(
             model=self.config["model"], effort=self.config.get("effort"),
@@ -433,6 +435,7 @@ class Bridge:
             self.punctuation_map = params.get("map")
             return {"punctuation": self.punctuation}
         if method == "login":
+            await self.disconnect()
             import claude_agent_sdk
             return {"argv": [str(Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"), "auth", "login"]}
         if method == "info":

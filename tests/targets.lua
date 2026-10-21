@@ -89,5 +89,21 @@ updated = apply(t, { '' })
 same(api.nvim_buf_get_lines(b, 0, -1, false), { 'keep' })
 same(T.envelope(updated)[1].text, '')
 
+b = buffer({ 'keep' })
+api.nvim_win_set_cursor(0, { 1, 2 })
+t = T.insertion()
+local tick = api.nvim_buf_get_changedtick(b)
+apply(t, { '' })
+same(api.nvim_buf_get_changedtick(b), tick)
+
+b = buffer({ '12345', '界abc' })
+vim.o.virtualedit = 'block'
+vim.cmd.normal({ args = { vim.keycode('gg0l<C-v>j1l') }, bang = true })
+t = T.visual()
+api.nvim_feedkeys(vim.keycode('<Esc>'), 'nx', false)
+apply(t, { 'X', 'Y' })
+same(api.nvim_buf_get_lines(b, 0, -1, false), { '1X45', ' Ybc' })
+vim.o.virtualedit = ''
+
 print('TARGET_SAFETY_OK')
 vim.cmd('qa!')

@@ -103,6 +103,8 @@ Here, `x` means Visual mode, `n` Normal mode, and `i` Insert mode. Mode-specific
 
 All actions are available through `:NvClaude`, with command completion. `:NvClaude compact` requests real runtime compaction; `:NvClaude cancel` interrupts the active request without applying a partial edit. `:NvClaude result` reopens the last answer or retained edit result. Closing a float never cancels its request. Ctrl-S submits a prompt in either mode; Normal Enter also submits, Insert Enter adds a newline, and Normal Escape closes it. Answers use Normal `q` or Escape to close and restore the origin window.
 
+An empty generation completes without changing the buffer or its undo history. Missing saved runtime transcripts are reported rather than silently replacing history with an empty conversation.
+
 ### Mapping timing
 
 Native Neovim mappings cannot distinguish a short mapping merely by how quickly you typed it. If `<leader>c` is both an action and a prefix for `<leader>cc`, Neovim normally waits for another key or the mapping timeout. `'timeoutlen'` controls that wait. WhichKey's display delay is a separate setting.[4]

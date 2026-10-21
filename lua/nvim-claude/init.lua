@@ -114,9 +114,10 @@ function M.invoke(operation, selected)
           if updated then
             remember(buf, updated)
             view.set(table.concat(vim.tbl_map(function(r) return r.text end, edit.replacements), '\n'))
-            view.status('applied; :NvClaude result to inspect')
+            local empty_insert = operation == 'generate' and view.text == ''
+            view.status(empty_insert and 'complete; no insertion' or 'applied; :NvClaude result to inspect')
             if api.nvim_win_is_valid(view.win) then api.nvim_win_close(view.win, true) end
-            notify(operation .. ' applied' .. (view.text == '' and ' (empty result)' or ''))
+            notify(empty_insert and 'generate completed; no insertion' or (operation .. ' applied'))
           else
             view.set('Not applied: ' .. reason .. '\n\n' .. result.raw)
             view.status('target changed; result retained')
@@ -187,7 +188,7 @@ local function system_prompt(action)
   local lines = state.system and vim.split(state.system, '\n', { plain = true })
     or vim.fn.readfile(runtime.root .. '/prompts/system.txt')
   api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  vim.cmd('new')
+  vim.cmd('split')
   api.nvim_win_set_buf(0, buf)
   api.nvim_create_autocmd('BufWriteCmd', { buffer = buf, callback = function()
     if state.active then notify('Conversation busy; prompt draft retained', true); return end
@@ -294,6 +295,12 @@ function M.setup(opts)
   api.nvim_create_autocmd('VimLeavePre', { group = group, callback = function()
     runtime.stop()
     if runtime.job then vim.fn.jobwait({ runtime.job }, 3000) end
+  end })
+  api.nvim_create_autocmd('BufEnter', { group = group, callback = function(event)
+    -- Prompt, answer and picker scratch buffers are not content actions.
+    if state.ask_chain and state.ask_chain.buf ~= event.buf and vim.bo[event.buf].buftype == '' then
+      state.ask_chain = nil
+    end
   end })
   api.nvim_create_autocmd('BufDelete', { group = group, callback = function(event)
     targets.release(state.remembered[event.buf]); state.remembered[event.buf] = nil
