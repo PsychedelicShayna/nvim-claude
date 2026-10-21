@@ -58,6 +58,19 @@ vim.api.nvim_buf_set_text(buf, 0, 1, 0, 3, { "x" })
 local stale_ok = target.apply(stale, { [stale.segments[1].id] = "y" }, function(value) return value end)
 assert(not stale_ok, "a changed target must reject a late result")
 
+vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "\tabc", "x\tz" })
+vim.api.nvim_win_set_cursor(0, { 1, 0 })
+vim.cmd([[execute "normal! \<C-v>j2l"]])
+local block = target.capture_visual("replace")
+vim.cmd("normal! \27")
+local block_targets = target.envelope_targets(block)
+equal({ block_targets[1].text, block_targets[2].text }, { " ab", " z" }, "block capture follows virtual columns")
+local block_replacements = {}
+for _, item in ipairs(block.segments) do block_replacements[item.id] = "Q" end
+local block_ok, block_reason = target.apply(block, block_replacements, function(value) return value end)
+assert(block_ok, block_reason)
+equal(vim.api.nvim_buf_get_lines(buf, 0, -1, false), { "       Qc", "x      Q" }, "block replacement preserves unselected tab cells")
+
 equal(plugin._normalize("a—b “c”…"), "a—b “c”…", "allow keeps punctuation")
 plugin.setup({ keys = false, punctuation = "replace" })
 equal(plugin._normalize("a—b “c”…"), 'a-b "c"...', "replace maps only configured punctuation")
