@@ -228,6 +228,8 @@ class Runtime:
             raw, _ = await self.stream(prompt, {'request': request['request'], 'epoch': request['epoch']})
         except BaseException:
             self.baselines.clear()
+            # Do not let unread error/final events become the next turn's result.
+            await self.disconnect()
             # Delivery is uncertain. Reserve both sent input and maximum output.
             self.record['history_bytes'] += len(prompt.encode()) + OUTPUT_RESERVE * 4
             self.store.write()

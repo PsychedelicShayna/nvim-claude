@@ -80,6 +80,7 @@ function M.invoke(operation, visual, previous)
     local active = { id = request.request, epoch = request.epoch, view = view }
     state.active = active
     bridge.request('turn', request, function(result, err)
+      view.finish()
       if state.active == active then state.active = nil end
       if err then view.update('Request failed. No edit applied.\n\n' .. err .. '\n\n' .. (active.partial or '')); view.title(operation .. ' · failed'); return end
       if active.cancelled or state.epoch ~= active.epoch then

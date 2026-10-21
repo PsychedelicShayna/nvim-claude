@@ -36,7 +36,11 @@ function M.result(title, origin)
     if not api.nvim_buf_is_valid(buf) then return end
     vim.bo[buf].modifiable = true
     api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(text, '\n', { plain = true }))
-    vim.bo[buf].modifiable = false
+    vim.bo[buf].modifiable = result.complete or false
+  end
+  function result.finish()
+    result.complete = true
+    if api.nvim_buf_is_valid(buf) then vim.bo[buf].modifiable = true end
   end
   function result.focus()
     if api.nvim_win_is_valid(win) then api.nvim_set_current_win(win)
@@ -78,7 +82,8 @@ function M.prompt(title, origin, submit, dismiss)
       count = count + math.max(1, math.ceil(vim.fn.strdisplaywidth(text) / config.width))
     end
     local height = math.min(math.max(3, count), math.max(1, math.floor(vim.o.lines / 3)))
-    api.nvim_win_set_config(win, { height = height, row = math.min(config.row, math.max(0, vim.o.lines - height - 4)) })
+    api.nvim_win_set_config(win, { relative = 'editor', col = config.col, height = height,
+      row = math.min(config.row, math.max(0, vim.o.lines - height - 4)) })
   end })
   vim.cmd.startinsert()
   return { buf = buf, win = win }

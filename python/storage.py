@@ -29,14 +29,17 @@ class Store:
     def cleanup_abandoned(self):
         for path in self.root.glob('*/manifest.json'):
             directory = path.parent
-            lease = self.lock(directory)
+            try:
+                lease = self.lock(directory)
+            except FileNotFoundError:
+                continue
             if lease is None:
                 continue
             try:
                 record = json.loads(path.read_text())
                 if not record['saved']:
                     self.delete(record, directory)
-            except (ValueError, KeyError):
+            except (ValueError, KeyError, FileNotFoundError):
                 # A corrupt record is not authority to delete runtime data.
                 pass
             finally:
