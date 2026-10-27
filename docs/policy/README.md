@@ -41,9 +41,9 @@ Promotion from nightly into master is a separate owner decision. Agents do not m
 
 This project has no canary batches. Documentation-only changes need no routine CI, build, installation, or runtime test. Use focused verification appropriate to the behavior changed. Once plugin code exists, verify changed editor behavior in Neovim and document how the owner uses the nightly version. Do not borrow NeoPi's binary build/install commands for this Lua/Python project.
 
-## Benchmark branch exception
+## Comparison branches
 
-The owner has authorized a separate benchmark launcher branch and implementation candidate branches. The launcher setup is separate work, not an instruction in this policy. Candidates are comparison deliverables, not ordinary PRs ready for nightly. Retain owner-authorized benchmark remote branches after their runs, even when their local worktrees are removed. Do not merge candidates until the owner selects the result and authorizes integration. Ordinary topic-branch cleanup still applies to other work.
+The `experimental/benchmark-*` and `experimental/round-1-*` branches on GitHub are records of an earlier model comparison built against a stricter draft spec. Keep them; do not merge them. The plugin on nightly is built from the current SPEC.md through ordinary topic-branch PRs.
 
 ## Release cadence
 
@@ -53,7 +53,7 @@ An owner-approved merge from nightly into master triggers stable packaging, tagg
 
 If a GitHub asset upload fails, retain the successful build and its metadata, then retry publishing that build without stalling development or rebuilding merely to retry the upload.
 
-This repository currently contains documentation only. It has no build/release automation and no package to publish. The cadence above records the required behavior for when code ships; it does not claim that packaging, tagging, uploads, or installation workflows exist.
+Release automation does not exist yet. The cadence above records the intended behavior; it does not claim that packaging, tagging, or uploads exist.
 
 ## Reviews and verification
 
