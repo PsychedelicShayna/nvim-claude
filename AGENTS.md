@@ -2,7 +2,7 @@
 
 Read CONTEXT.md before domain work. Read SPEC.md before designing or implementing plugin behavior; it defines the shared behavior and acceptance criteria. Read docs/agents/domain.md when exploring domain terms, invariants, or decisions. Runtime limitations need evidence, not silent scope reductions.
 
-This repository is the common baseline for independent end-to-end implementation comparisons. Implementation must await explicit owner instruction. Preparing documentation does not start a run.
+SPEC.md's "What success means" section is the pass/fail gate. Everything else in it is desirable behavior. Do not invent stricter acceptance criteria than the spec states, and do not grade a working implementation as failed over a mechanism the spec calls optional.
 
 ## Repository workflow
 

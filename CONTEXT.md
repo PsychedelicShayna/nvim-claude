@@ -1,17 +1,17 @@
 # Project context
 
-nvim-claude is a planned Neovim plugin for explicit, cursor-local collaboration with Claude. It replaces the owner's old `inf`-backed inline workflow without turning the editor into a chat sidebar or giving the model file-editing tools.
+nvim-claude is a Neovim plugin for explicit, cursor-local collaboration with Claude. It replaces the owner's old `inf`-backed inline workflow without turning the editor into a chat sidebar or giving the model file-editing tools.
 
-This is a single-context repository. [README.md](README.md) explains the product; [SPEC.md](SPEC.md) defines the shared implementation baseline and required runtime evidence. No plugin implementation exists yet. Preparing the baseline does not authorize starting the later implementation runs.
+This is a single-context repository. [README.md](README.md) explains the product; [SPEC.md](SPEC.md) defines its behavior and the conditions that make an implementation successful.
 
 ## Confirmed direction
 
 - Preserve the working interaction: a small prompt float near the cursor, visual replacement or cursor insertion, a model picker, and separate answers for questions.
 - The reference implementation in the owner's configuration is `NervGen`, in `lua/usercmds/nervgen.lua`. `<leader>i` invokes generation/replacement; `<leader>I` opens the model picker. The local `config` symlink is private reference material, not a dependency to publish.
-- Lua owns the editor interaction. A local Python process hosts the official Claude Agent SDK. The baseline chooses JSON-RPC over stdio with LSP-style framing; it does not implement LSP.
+- Lua owns the editor interaction. A long-lived local Python process hosts the official Claude Agent SDK and talks to Lua over stdio.
 - Setup creates a virtual environment from system Python, installs the latest released SDK with pip, and runs its bundled CLI. No separate Claude Code installation is required. This supersedes the original fixed-version-pinning idea.
 - Show runtime-announced models and allow manually entered model slugs.
-- Haiku 5.5 with a 100,000-token prompt ceiling is the initial use case. Keep physical model capacity, a local budget, and pricing boundaries distinct.
+- Haiku 5.5 on low effort with a roughly 100,000-token context limit is the initial use case. The limit is a client-managed cost control: when it is reached, the plugin offers a new conversation (default) or compaction. A modest overshoot is fine. It is not a hard ceiling and needs no server-side model variant.
 - Conversation reuse is deliberate and initially ephemeral. Saving and sticky mode provide persistence. Cache expiry is not the same as losing conversation history.
 - The model has no tools. Neovim applies completed edit output to the captured target. Ask output does not modify the source buffer.
 - Output punctuation normalization must not rewrite the raw assistant history.
@@ -44,7 +44,7 @@ This is a single-context repository. [README.md](README.md) explains the product
 | Cache TTL | The provider's lifetime for a cached prefix after a qualifying request. An estimated TTL is not proof of a live entry. |
 | Ephemeral expiry | The plugin's decision to start fresh after its cache-aware inactivity interval. It does not delete remote cache entries. |
 | Context occupancy | Tokens currently represented in the model context. Not the sum of all tokens ever billed for the conversation. |
-| Context limit / local budget | The plugin's requested bound, separate from the model's physical context capacity. A compaction trigger alone does not prove hard enforcement. |
+| Context limit | The plugin's client-managed cost target, separate from the model's physical context capacity. Reaching it triggers a new conversation or compaction; it is approximate by design. |
 | Compaction | Replacing detailed conversation context with a shorter summary. It is lossy and can itself consume tokens. |
 | Runtime model selector | The model ID or native variant selector accepted by Claude Code. A plugin-local budget suffix is removed before passing this value to the SDK. |
 | Effort | A model-supported reasoning setting, distinct from model identity and context capacity. |
@@ -66,7 +66,7 @@ This is a single-context repository. [README.md](README.md) explains the product
 - The next request describes the actual buffer, including user edits, undo, and output normalization.
 - Raw history, current buffer state, saved storage, and provider cache are separate sources of state.
 - A full snapshot, a diff, unchanged context, and an excerpt have explicit meanings. Absence of a field is not overloaded to mean several of them.
-- Model selection does not silently change billing mode or increase a chosen local budget.
+- Model selection does not silently change billing mode.
 - No model/tool call is needed merely to keep a cache warm.
 
 ## Repository workflow
@@ -83,17 +83,9 @@ The owner chose NeoPi's development conventions, adapted to this smaller reposit
 
 The owner enabled Standard Protection, ruleset `25543973`, on master/default and nightly. Branch protection does not replace the owner-only promotion rule. Agent-facing documentation lives in `docs/agents`; use CONTEXT.md for domain decisions rather than creating a separate ADR tree.
 
-## Planned implementation comparison
+## History
 
-The owner is preparing four initial independent runs: GPT-6 Astra in NeoPi and Codex CLI, and Sol 6.1 in NeoPi and Codex CLI. Sol runs use extra-high reasoning; preserve the operator's actual model and effort selection rather than substituting another model. Opus 5.5 in Claude Code and NeoPi are later candidates in the six-run comparison. Each run implements the whole plugin, not a slice assigned to a team. Preparing this baseline does not launch those runs.
-
-SPEC.md settles the shared interaction and storage choices. Start every comparison worktree from the same baseline commit and retain its behavior contract. Module design and presentation styling can differ; dropping a required feature cannot count as finishing the comparison.
-
-The separate `benchmark` branch and launcher checkout carry benchmark-specific entry instructions. There, the owner's word "implement" starts one run in a model-and-harness-named worktree. The deliverable is a pushed branch installable through lazy.nvim, with commands, default/configurable bindings, and automatic Python/SDK setup as specified. Candidates remain unmerged until the owner selects one. Retain their remote branches as benchmark records while removing completed local worktrees. Ordinary development on nightly retains its usual merge-and-cleanup workflow.
-
-## Runtime evidence still required
-
-The specification is ready for implementation, not proof of runtime support. Each implementation must establish catalogue discovery, no-tools enforcement, authentication, compaction, strict budget accounting, exact session retention, and prompt replacement with the actual installed SDK and CLI. Record their versions because latest-on-setup can resolve differently across runs.
+An earlier version of SPEC.md was written as a common baseline for a model comparison. It demanded a provable hard 100k ceiling and told implementations to refuse requests when one could not be established. Every comparison candidate followed that and graded itself as failing, even where an autocompact window or a fresh-conversation rollover met the owner's actual goal. The spec now states the intent directly: keep Haiku roughly near 100k by any working means. The comparison branches remain on GitHub as records; the implementation on nightly is built from the relaxed spec.
 
 ## Naming
 
