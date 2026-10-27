@@ -2,7 +2,7 @@
 
 A personal Neovim plugin for quick, deliberate collaboration with Claude while editing text. Select something, open a small prompt float near the cursor, say what you want, and keep writing.
 
-**This repository contains the implementation baseline, not a working plugin.** The [specification](SPEC.md) defines the common behavior for later independent implementations and identifies the runtime evidence each must supply.
+The [specification](SPEC.md) defines what the plugin does and what counts as a working implementation.
 
 ## What it is
 
@@ -23,7 +23,7 @@ I have RSI, repetitive strain injury. Reducing the number of keys between a thou
 
 I already have Codex in my configuration, and I am developing a broader project that will eventually support multiple providers. In the meantime, I want Haiku 5.5 for fast text manipulation, reformatting, cleanup, and generation. I also find the idea of having Astra build a Claude integration funny.
 
-The intended starting model is `claude-haiku-5-5`, with a 100,000-token prompt budget. Anthropic currently documents higher per-token pricing for Haiku 5.5 requests whose prompts exceed 100,000 tokens. Cached input counts toward that boundary too. Staying under it matters; caching alone does not avoid the higher tier. Subscription usage accounting is not necessarily identical to API pricing.[1]
+The intended starting model is `claude-haiku-5-5` on low effort, with a 100,000-token context limit. Anthropic charges more per token for Haiku 5.5 prompts over 100,000 tokens, so the plugin keeps conversations roughly under that by offering a fresh conversation or compaction when the limit is reached. Going a little over is fine; the limit is a cost control, not a hard wall.[1]
 
 The official name is **Claude Agent SDK**, singular. Anthropic provides Python and TypeScript packages. The Python SDK's source is public and MIT-licensed; that does not make the underlying Claude Code runtime open source. Both SDKs use Claude Code, whose terms and distribution are separate. I prefer Python, so that is the backend language.[2]
 
@@ -41,11 +41,17 @@ API-key authentication is a documented SDK path and bills as API usage. The plug
 
 ## Installation acceptance
 
-The implementation must install by repository name and branch through a plugin manager such as lazy.nvim on another supported Neovim installation. No private configuration, local worktree path, or preinstalled Claude Code is required.
+Add the repository to your plugin manager. With lazy.nvim:
 
-The shared Lua entry point is `require("nvim-claude").setup(opts)`. lazy.nvim uses `main = "nvim-claude"` and `opts = {}` to invoke setup. Commands and the default bindings below must appear before authentication succeeds. Override individual mappings through `opts.keys`, disable one with `false`, or set `keys = false` to disable all plugin mappings. The [specification](SPEC.md#installable-plugin-deliverable) defines the option names and portability checks.
+```lua
+{
+  "PsychedelicShayna/nvim-claude",
+  main = "nvim-claude",
+  opts = {},
+}
+```
 
-This branch still contains the specification, not an installable implementation. Each completed benchmark candidate must replace that notice with truthful installation instructions and a lazy.nvim example naming its actual published branch. The owner can switch branches to compare candidates without promoting any of them to master.
+On first use the plugin creates a Python virtual environment in Neovim's data directory and installs the latest `claude-agent-sdk`. It needs Neovim 0.10+ and Python 3.10+. Override individual mappings through `opts.keys`, disable one with `false`, or set `keys = false` to disable all mappings. The [specification](SPEC.md#default-mappings) lists the option names.
 
 ## Specified usage
 
@@ -102,7 +108,7 @@ The requested context presets are:
 950k, 980k
 ```
 
-There should also be a "model default" choice. A local budget cannot enlarge a model's actual context window. Automatic compaction is not, by itself, proof that no request can exceed a chosen pricing boundary. The implementation must account for the next prompt, system instructions, context, and compaction requests before promising a hard 100k ceiling.
+There is also a "model default" choice. When the conversation reaches its limit, the plugin asks whether to start a new conversation (the default) or compact, then runs the pending request. `opts.on_limit = "new"` or `"compact"` skips the question.
 
 ## Conversations and caching
 
@@ -148,7 +154,7 @@ Normalization applies only to displayed or inserted output. The raw assistant re
 
 Changing the system prompt can invalidate the cached prefix. It does not inherently require deleting the conversation. Recent Claude Code runtimes also snapshot system prompts, so the implementation must deliberately arrange for edits to take effect, rather than merely changing a Python variable. Sticky mode controls retention, not cache validity.
 
-The [specification](SPEC.md#model-input-and-output-contract) contains the replacement system prompt. It defines edit targets separately from supporting context, treats buffer contents as data, and distinguishes snapshots from diffs. Ask returns streaming prose. Editing returns a validated JSON result containing each target's replacement text, or a clarification that changes no buffer. Only decoded replacement text is inserted; the JSON envelope is not.
+The [specification](SPEC.md#model-input-and-output) describes the request and response contract. Buffer contents are task data. Ask returns streaming prose. Editing returns a small JSON result containing each target's replacement text, or a clarification that changes no buffer. Only the decoded replacement text is inserted.
 
 ## Sources
 
