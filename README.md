@@ -51,7 +51,7 @@ Add the repository to your plugin manager. With lazy.nvim:
 }
 ```
 
-On first use the plugin creates a Python virtual environment in Neovim's data directory and installs the latest `claude-agent-sdk`. It needs Neovim 0.10+ and Python 3.10+. Override individual mappings through `opts.keys`, disable one with `false`, or set `keys = false` to disable all mappings. The [specification](SPEC.md#default-mappings) lists the option names.
+On first use the plugin creates a Python virtual environment in Neovim's data directory and installs the latest `claude-agent-sdk`; the SDK bundles Claude Code and uses your existing Claude Code login. If you are not logged in, run `:NvClaude login`. It needs Neovim 0.11+ and Python 3.10+. Override individual mappings through `opts.keys`, disable one with `false`, or set `keys = false` to disable all mappings. A default key you already mapped yourself is left alone unless you name it in `opts.keys`; `:NvClaude info` lists any it skipped. The [specification](SPEC.md#default-mappings) lists the option names. Bridge diagnostics go to `:NvClaude log`.
 
 ## Specified usage
 
